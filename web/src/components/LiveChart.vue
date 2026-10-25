@@ -79,9 +79,19 @@ function render() {
       },
     },
     legend: props.legend
-      ? { top: 0, right: 0, itemWidth: 14, textStyle: { color: '#8b949e', fontSize: 11 } }
+      ? {
+          // 滚动式图例：条目再多也只占一行（翻页箭头），不会膨胀到与坐标轴重叠
+          type: 'scroll',
+          top: 0, right: 0,
+          itemWidth: 14, itemHeight: 8,
+          textStyle: { color: '#8b949e', fontSize: 11 },
+          pageIconColor: '#8b949e',
+          pageIconInactiveColor: '#2d333b',
+          pageIconSize: 10,
+          pageTextStyle: { color: '#8b949e', fontSize: 10 },
+        }
       : undefined,
-    grid: { left: 56, right: 14, top: props.legend ? 26 : 8, bottom: 24 },
+    grid: { left: 56, right: 14, top: props.legend ? 30 : 8, bottom: 24 },
     xAxis: {
       type: 'time',
       axisLabel: {

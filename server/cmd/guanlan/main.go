@@ -19,7 +19,7 @@ import (
 	"guanlan/server/internal/store"
 )
 
-var appVersion = "0.5.2"
+var appVersion = "0.5.3"
 
 func main() {
 	var (
