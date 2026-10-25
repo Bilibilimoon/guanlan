@@ -99,7 +99,11 @@ func listProcesses() []ProcInfo {
 		if cb, err := os.ReadFile("/proc/" + e.Name() + "/cmdline"); err == nil && len(cb) > 0 {
 			pi.Cmd = strings.Join(strings.Fields(strings.ReplaceAll(string(cb), "\x00", " ")), " ")
 			if len(pi.Cmd) > 200 {
-				pi.Cmd = pi.Cmd[:200] + "…"
+				// 按 rune 截断，避免切断多字节字符产生 U+FFFD
+				r := []rune(pi.Cmd)
+				if len(r) > 200 {
+					pi.Cmd = string(r[:200]) + "…"
+				}
 			}
 		}
 		commStart := strings.IndexByte(string(b), '(')

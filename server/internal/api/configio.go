@@ -92,8 +92,9 @@ func (s *Server) configImport(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Rules != nil && s.opt.Alert != nil && len(*req.Rules) > 0 && len(*req.Rules) <= 32 {
 		valid := true
-		for _, rule := range *req.Rules {
-			if rule.Op != ">" && rule.Op != "<" || rule.ForMin < 0 || rule.ForMin > 720 {
+		for i := range *req.Rules {
+			rule := &(*req.Rules)[i]
+			if (rule.Op != ">" && rule.Op != "<") || rule.ForMin < 0 || rule.ForMin > 15 {
 				valid = false
 				break
 			}
@@ -128,6 +129,12 @@ func (s *Server) dataClear(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	db := s.st.DB()
+	// alerts 表由告警评估器建；从未触发过告警时可能不存在，先幂等建表
+	db.Exec(`CREATE TABLE IF NOT EXISTS alerts(
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		started INTEGER NOT NULL, resolved INTEGER DEFAULT 0,
+		rule_id TEXT NOT NULL, metric TEXT NOT NULL, value REAL, level TEXT, acked INTEGER DEFAULT 0
+	)`)
 	for _, t := range []string{"points_l0", "points_l1", "points_l2", "alerts"} {
 		if _, err := db.Exec(`DELETE FROM ` + t); err != nil {
 			http.Error(w, `{"error":"clear_failed"}`, http.StatusInternalServerError)

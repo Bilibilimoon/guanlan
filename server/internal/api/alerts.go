@@ -47,7 +47,7 @@ func (s *Server) alertRules(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, `{"error":"bad_op"}`, http.StatusBadRequest)
 			return
 		}
-		if rule.ForMin < 0 || rule.ForMin > 720 {
+		if rule.ForMin < 0 || rule.ForMin > 15 {
 			http.Error(w, `{"error":"bad_for"}`, http.StatusBadRequest)
 			return
 		}

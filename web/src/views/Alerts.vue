@@ -92,7 +92,7 @@ function fmtTime(ts) {
             </select></td>
             <td><select v-model="r.op" class="sel"><option>&gt;</option><option>&lt;</option></select>
               <input v-model.number="r.threshold" type="number" step="any" class="num" /></td>
-            <td><input v-model.number="r.forMin" type="number" min="0" max="720" class="num" /> min</td>
+            <td><input v-model.number="r.forMin" type="number" min="0" max="15" class="num" /> min</td>
             <td><select v-model="r.level" class="sel">
               <option value="warn">{{ t('alert.lv.warn') }}</option>
               <option value="crit">{{ t('alert.lv.crit') }}</option>

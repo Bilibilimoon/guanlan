@@ -147,8 +147,12 @@ func breach(r Rule, v float64) bool {
 	return v > r.Threshold
 }
 
-// sustained: 最近 ForMin 分钟内超限样本占比 ≥ 80%
+// sustained: 最近 ForMin 分钟内超限样本占比 ≥ 80%。
+// 环形缓冲只保留最近 15 分钟，ForMin 上限 15（API/导入校验同步此约束）。
 func (e *Evaluator) sustained(r Rule) bool {
+	if r.ForMin > 15 {
+		r.ForMin = 15
+	}
 	sec := r.ForMin * 60
 	if sec < 60 {
 		sec = 60

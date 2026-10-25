@@ -139,11 +139,16 @@ func (s *Store) Query(level string, names []string, start, end int64) (map[strin
 		level = "l0"
 	}
 	out := map[string][][2]float64{}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	for _, name := range names {
-		id, ok := s.ids[name]
-		if !ok {
+		if len(name) > 128 {
+			out[name] = nil // 超长名（异常输入）直接视为无数据
+			continue
+		}
+		// 不在读锁内回填缓存：Query 会并发调用，读锁内写 map 会 panic
+		s.mu.RLock()
+		id, cached := s.ids[name]
+		s.mu.RUnlock()
+		if !cached {
 			var idv int64
 			err := s.db.QueryRow(`SELECT id FROM metrics WHERE name=?`, name).Scan(&idv)
 			if err != nil {
@@ -151,7 +156,6 @@ func (s *Store) Query(level string, names []string, start, end int64) (map[strin
 				continue
 			}
 			id = idv
-			s.ids[name] = id
 		}
 		rows, err := s.db.Query(
 			`SELECT t, v FROM points_`+level+` WHERE k=? AND t BETWEEN ? AND ? ORDER BY t`,

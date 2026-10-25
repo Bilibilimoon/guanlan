@@ -28,11 +28,10 @@ onMounted(startPolling)
 onBeforeUnmount(() => stopPoll && stopPoll())
 function setRefresh(v) { refreshSec.value = v; startPolling() }
 
-// Linux 进程状态码翻译
-const STATE_KEYS = ['R', 'S', 'D', 'Z', 'T', 't', 'I', 'X', 'W', 'P']
+// Linux 进程状态码翻译（未知码原样显示）
 function stateText(s) {
-  const k = STATE_KEYS.includes(s) ? s : 'R'
-  return `${s} ${t(`proc.st.${k}`)}`
+  const translated = t(`proc.st.${s}`)
+  return translated === `proc.st.${s}` ? s : `${s} ${translated}`
 }
 
 const filtered = computed(() => {

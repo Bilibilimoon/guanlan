@@ -114,10 +114,16 @@ type tcpCtxKey int
 
 const tcpROKey tcpCtxKey = 1
 
-// MarkTCP 包装 TCP listener 的 handler：请求进入只读通道（无法从外部伪造，
-// context 只在本进程内设置）。
+// MarkTCP 包装 TCP listener 的 handler：进入只读通道（context 只在本进程
+// 设置，无法从外部伪造），并**剥掉全部 X-Trim-* 头**——网关身份头只在
+// Unix socket 链路上可信，TCP 直连者伪造同名头也必须无效。
 func MarkTCP(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for k := range r.Header {
+			if strings.HasPrefix(k, "X-Trim-") {
+				r.Header.Del(k)
+			}
+		}
 		h.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), tcpROKey, true)))
 	})
 }
