@@ -60,7 +60,7 @@ export default {
   hist: {
     r10m: '10m', r1h: '1h', r1d: '1d', r1w: '1w', r1M: '1M', r1y: '1y',
     groupLabel: 'Metrics',
-    group: { usage: 'Usage', thermal: 'Thermal', network: 'Network', disk: 'Disk', load: 'Load' },
+    group: { usage: 'Usage', thermal: 'Thermal', network: 'Network', disk: 'Disk', load: 'Load', fan: 'Fan' },
     hint: 'Scroll to zoom the time axis: zooming into recent ranges automatically switches to finer granularity (L0 raw / L1 5min / L2 1h).',
   },
   proc: {
@@ -153,5 +153,10 @@ export default {
     clearConfirm: 'Yes, clear it',
     clearDone: 'History data cleared',
     cancel: 'Cancel',
+    histExport: 'History data',
+    histExportBtn: 'Export history (incl. config)',
+    histImportBtn: 'Import history',
+    histImportFail: 'Import failed: only files exported by a Guanlan instance with identical metrics are accepted',
+    histImportDone: 'Imported (total {n} rows)',
   },
 }

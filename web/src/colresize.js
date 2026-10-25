@@ -29,10 +29,20 @@ export function useColResize(key, defaults) {
     document.addEventListener('pointerup', up)
   }
 
+  // 表头边缘检测：按下点位于表头右缘 EDGE px 内即进入列宽调整。
+  // 比依赖 7px 小把手可靠得多（用户痛点：把手拖了没反应）。
+  const EDGE = 10
+  function thResize(col, e) {
+    const r = e.currentTarget.getBoundingClientRect()
+    if (e.clientX < r.right - EDGE) return false // 未命中边缘：交给其他逻辑（排序等）
+    startResize(col, e)
+    return true
+  }
+
   function reset() {
     widths.value = { ...defaults }
     persist()
   }
 
-  return { widths, startResize, reset }
+  return { widths, startResize, thResize, reset }
 }

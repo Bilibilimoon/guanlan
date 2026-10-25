@@ -84,6 +84,48 @@ function importConfig(ev) {
   ev.target.value = ''
 }
 
+// 历史数据导出 / 导入
+function exportHistory() {
+  fetch('api/history/export', { headers: { 'X-Requested-With': 'guanlan' } })
+    .then((r) => {
+      if (!r.ok) throw new Error(String(r.status))
+      return r.blob()
+    })
+    .then((b) => {
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(b)
+      a.download = `guanlan-history-${new Date().toISOString().slice(0, 10)}.db`
+      a.click()
+      URL.revokeObjectURL(a.href)
+    })
+    .catch(() => { histMsg.value = t('set.importFail') })
+}
+const histFile = ref(null)
+const histMsg = ref('')
+const histBusy = ref(false)
+function importHistory(ev) {
+  const f = ev.target.files?.[0]
+  if (!f) return
+  histBusy.value = true
+  fetch('api/history/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream', 'X-Requested-With': 'guanlan' },
+    body: f,
+  })
+    .then(async (r) => {
+      if (r.ok) {
+        const d = await r.json()
+        histMsg.value = t('set.histImportDone', { n: d.totalRows })
+        meta.value = await getJSON('api/meta')
+      } else {
+        histMsg.value = t('set.histImportFail')
+      }
+    })
+    .catch(() => { histMsg.value = t('set.histImportFail') })
+    .finally(() => { histBusy.value = false; setTimeout(() => (histMsg.value = ''), 5000) })
+  ev.target.value = ''
+}
+
 // 清空历史数据（模态二次确认）
 const showClear = ref(false)
 const clearing = ref(false)
@@ -122,6 +164,7 @@ async function doClear() {
         <select class="sel" :value="locale" @change="setLang($event.target.value)">
           <option value="zh">中文</option>
           <option value="en">English</option>
+          <option value="ja">日本語</option>
         </select>
         <span v-if="saved" class="ok">{{ saved }}</span>
       </div>
@@ -189,11 +232,12 @@ async function doClear() {
 <style scoped>
 .panel { margin-top: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; }
 .panel h3 { margin: 2px 0 8px; font-size: 13px; color: var(--muted); font-weight: 500; }
-.row { display: grid; grid-template-columns: 170px auto auto; align-items: center; gap: 8px; padding: 6px 0; font-size: 13px; }
+.row { display: flex; align-items: center; gap: 12px; padding: 6px 0; font-size: 13px; }
+.row > label { flex: none; color: var(--muted); }
 .row label { color: var(--muted); }
-.unit { color: var(--muted); }
-.sel { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px; font-size: 13px; cursor: pointer; justify-self: start; }
-.num { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; width: 90px; font-size: 13px; justify-self: start; }
+.unit { color: var(--muted); margin-left: -6px; }
+.sel { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px; font-size: 13px; cursor: pointer; }
+.num { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; width: 90px; font-size: 13px; }
 .btn { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 14px; font-size: 13px; cursor: pointer; }
 .ok { color: var(--green); font-size: 12px; }
 .hint { color: var(--muted); font-size: 12px; margin: 6px 0 0; }

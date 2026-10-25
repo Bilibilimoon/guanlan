@@ -56,14 +56,14 @@ const COLS = [
   { key: 'startAt', w: 110 },
   { key: 'cmd', w: 520 },
 ]
-const { widths, startResize } = useColResize('procs', Object.fromEntries(COLS.map((c) => [c.key, c.w])))
+const { widths, thResize } = useColResize('procs', Object.fromEntries(COLS.map((c) => [c.key, c.w])))
 
 function setSort(k) {
   if (sortKey.value === k) sortDesc.value = !sortDesc.value
   else { sortKey.value = k; sortDesc.value = true }
 }
 function now() { return Date.now() / 1000 }
-const zh = computed(() => locale.value === 'zh')
+const zh = computed(() => locale.value)
 </script>
 
 <template>
@@ -85,10 +85,11 @@ const zh = computed(() => locale.value === 'zh')
           <col v-for="c in COLS" :key="c.key" :style="{ width: (widths[c.key] || c.w) + 'px' }" />
         </colgroup>
         <thead><tr>
-          <th v-for="c in COLS" :key="c.key" :class="{ sortable: c.key !== 'cmd' }" @click="c.key !== 'cmd' && setSort(c.key)">
+          <th v-for="c in COLS" :key="c.key" :class="{ sortable: c.key !== 'cmd' }"
+            @pointerdown="thResize(c.key, $event)" @click="c.key !== 'cmd' && setSort(c.key)">
             {{ t(`proc.col.${c.key}`) }}
             <span v-if="sortKey === c.key" class="arrow">{{ sortDesc ? '▼' : '▲' }}</span>
-            <span class="colgrip" @pointerdown="startResize(c.key, $event)"></span>
+            <span class="colgrip"></span>
           </th>
         </tr></thead>
         <tbody>
@@ -122,8 +123,8 @@ th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 10px 
 th.sortable { cursor: pointer; }
 th.sortable:hover { color: var(--text); }
 .arrow { color: var(--accent); font-size: 10px; margin-left: 2px; }
-.colgrip { position: absolute; right: 0; top: 0; bottom: 0; width: 7px; cursor: col-resize; }
-.colgrip:hover { background: rgba(47, 129, 247, 0.35); }
+.colgrip { position: absolute; right: 0; top: 0; bottom: 0; width: 10px; cursor: col-resize; }
+th:hover .colgrip { background: rgba(47, 129, 247, 0.35); border-radius: 2px; }
 td { padding: 4px 10px 4px 0; border-top: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cmd { overflow: hidden; text-overflow: ellipsis; }
 .mono { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }

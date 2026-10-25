@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import LiveChart from '../components/LiveChart.vue'
 import { getJSON } from '../api'
-import { fmtDur } from '../fmt'
+import { fmtDur, tempName } from '../fmt'
 
 const { t, locale } = useI18n()
 const C = { blue: '#2f81f7', green: '#3fb950', purple: '#bc8cff', orange: '#d29922', red: '#f85149', cyan: '#39c5cf', pink: '#ff7b72', lime: '#7ee787' }
@@ -19,11 +19,12 @@ const RANGES = [
 ]
 
 const GROUPS = [
-  { id: 'usage', yType: 'percent', metrics: ['cpu', 'mem_pct', 'npu_pct', 'gpu_pct'] },
+  { id: 'usage', yType: 'percent', metrics: ['cpu', 'mem_pct', 'npu_pct', 'gpu_pct', 'swap_pct'] },
   { id: 'thermal', yType: 'celsius', prefix: 'temp.' },
   { id: 'network', yType: 'bytes', prefix: 'net.' },
   { id: 'disk', yType: 'bytes', prefix: 'disk.' },
   { id: 'load', yType: 'count', metrics: ['load1', 'load5', 'load15'] },
+  { id: 'fan', yType: 'rpm', metrics: ['fan'] },
 ]
 
 const rangeSec = ref(7 * 86400)
@@ -75,12 +76,13 @@ async function loadRange(sec, lv, keepView = false) {
 }
 
 function prettyName(name) {
+  if (name.startsWith('temp.')) return tempName(name.slice(5), locale.value)
   return name
-    .replace('temp.', '')
     .replace('-thermal', '')
     .replace('net.', '')
     .replace('disk.', '')
     .replace('mem_pct', t('card.mem'))
+    .replace('swap_pct', 'Swap')
     .replace('cpu', 'CPU')
     .replace('npu_pct', 'NPU')
     .replace('gpu_pct', 'GPU')
@@ -147,14 +149,13 @@ onMounted(() => setRange(rangeSec.value))
 <template>
   <div class="hist">
     <div class="ctrl">
-      <div class="ctrl-group">
-        <button v-for="r in RANGES" :key="r.sec" :class="['rbtn', { active: rangeSec === r.sec }]"
+      <div class="seg">
+        <button v-for="r in RANGES" :key="r.sec" :class="['segb', { active: rangeSec === r.sec }]"
           @click="setRange(r.sec)">{{ t(`hist.${r.key}`) }}</button>
       </div>
-      <div class="ctrl-group">
-        <span class="ctrl-label">{{ t('hist.groupLabel') }}</span>
-        <button v-for="g in GROUPS" :key="g.id" :class="['rbtn', { active: group === g.id }]"
-          @click="group = g.id; setRange(rangeSec.value)">{{ t(`hist.group.${g.id}`) }}</button>
+      <div class="seg">
+        <button v-for="g in GROUPS" :key="g.id" :class="['segb', { active: group === g.id }]"
+          @click="group = g.id; setRange(rangeSec)">{{ t(`hist.group.${g.id}`) }}</button>
       </div>
       <span class="ctrl-label">{{ levelTip }}</span>
       <span v-if="loading" class="ctrl-label">…</span>
@@ -173,14 +174,18 @@ onMounted(() => setRange(rangeSec.value))
   margin-top: 14px; padding: 8px 12px;
   background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
 }
-.ctrl-group { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
-.ctrl-label { color: var(--muted); font-size: 12px; white-space: nowrap; }
-.rbtn {
-  background: none; border: 1px solid transparent; color: var(--muted);
-  border-radius: 6px; padding: 3px 10px; cursor: pointer; font-size: 12px;
+.seg {
+  display: inline-flex; gap: 2px; padding: 2px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
 }
-.rbtn:hover { color: var(--text); }
-.rbtn.active { color: var(--text); background: var(--bg); border-color: var(--border); }
+.segb {
+  background: none; border: none; color: var(--muted);
+  padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;
+  transition: background .15s, color .15s;
+}
+.segb:hover { color: var(--text); }
+.segb.active { background: var(--accent); color: #fff; }
+.ctrl-label { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .panel {
   margin-top: 12px; background: var(--panel); border: 1px solid var(--border);
   border-radius: 10px; padding: 10px 12px 6px;

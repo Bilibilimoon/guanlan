@@ -13,8 +13,11 @@ window.addEventListener('error', (e) => {
 
 function detectLang() {
   const saved = localStorage.getItem('guanlan.lang')
-  if (saved === 'zh' || saved === 'en') return saved
-  return (navigator.language || 'zh').toLowerCase().startsWith('zh') ? 'zh' : 'en'
+  if (['zh', 'en', 'ja'].includes(saved)) return saved
+  const nav = (navigator.language || 'zh').toLowerCase()
+  if (nav.startsWith('zh')) return 'zh'
+  if (nav.startsWith('ja')) return 'ja'
+  return 'en'
 }
 
 const i18n = createI18n({

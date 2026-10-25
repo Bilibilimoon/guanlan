@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import LiveChart from '../components/LiveChart.vue'
 import StatCard from '../components/StatCard.vue'
 import { getJSON, poll } from '../api'
-import { fmtC, fmtDur, pressureColor } from '../fmt'
+import { fmtC, fmtDur, pressureColor, tempName, tempTip } from '../fmt'
 
 const { t, locale } = useI18n()
 const latest = ref(null)
@@ -58,7 +58,7 @@ const COLORS = ['#f85149', '#d29922', '#bc8cff', '#39c5cf', '#2f81f7', '#3fb950'
 const series = computed(() => {
   const keys = [...new Set(rows.value.flatMap((r) => Object.keys(r.temps || {})))]
   return keys.map((k, i) => ({
-    name: k.replace(/-thermal$/, ''),
+    name: tempName(k, locale.value),
     color: COLORS[i % COLORS.length],
     points: rows.value.filter((r) => r.temps && r.temps[k] != null).map((r) => [r.t, r.temps[k]]),
   }))
@@ -71,7 +71,7 @@ const cards = computed(() => {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 9)
     .map(([k, v]) => ({
-      title: k.replace(/-thermal$/, ''),
+      title: tempName(k, locale.value),
       value: fmtC(v),
       color: pressureColor(((v - 35) / 50) * 100),
     }))
@@ -83,14 +83,14 @@ const cards = computed(() => {
     <div class="ctrl">
       <span class="ctrl-label">{{ t('ctrl.window') }}</span>
       <button v-for="w in WINDOWS" :key="w" :class="['rbtn', { active: winSec === w }]"
-        @click="winSec = w; reload()">{{ fmtDur(w, locale === 'zh') }}</button>
+        @click="winSec = w; reload()">{{ fmtDur(w, locale) }}</button>
     </div>
     <div class="cards">
       <StatCard v-for="(c, i) in cards" :key="i" v-bind="c" />
     </div>
     <section class="panel">
       <LiveChart :series="series" y-type="celsius" height="48vh" />
-      <p class="hint">{{ t('thermal.zoneNote') }}</p>
+      <p class="hint">{{ tempTip(locale.value) }}</p>
     </section>
   </div>
 </template>

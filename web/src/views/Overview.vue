@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import StatCard from '../components/StatCard.vue'
 import LiveChart from '../components/LiveChart.vue'
 import { getJSON, postJSON, poll } from '../api'
-import { fmtBytes, fmtBps, fmtGiB, fmtPct, fmtC, fmtUptime, fmtDur, pressureColor } from '../fmt'
+import { fmtBytes, fmtBps, fmtGiB, fmtPct, fmtC, fmtUptime, fmtDur, pressureColor, tempName, tempTip } from '../fmt'
 
 const { t, locale } = useI18n()
 const C = { blue: '#2f81f7', green: '#3fb950', purple: '#bc8cff', orange: '#d29922', red: '#f85149', cyan: '#39c5cf' }
@@ -442,7 +442,7 @@ function buildThermal(s) {
   return thermalKeys
     .filter((k) => s.some((x) => x.temps && x.temps[k] != null))
     .map((k, i) => ({
-      name: k.replace(/-thermal$/, ''),
+      name: tempName(k, locale.value),
       color: thermalColors[i],
       points: s.filter((x) => x.temps && x.temps[k] != null).map((x) => [x.t, x.temps[k]]),
     }))
@@ -490,7 +490,7 @@ const panelSeries = computed(() => {
 })
 
 function chartTitle(pid) {
-  return `${t(PANEL_META[pid].titleKey)} · ${fmtDur(panelWindowOf(pid), locale.value === 'zh')}`
+  return `${t(PANEL_META[pid].titleKey)} · ${fmtDur(panelWindowOf(pid), locale.value)}`
 }
 
 // ---- IP 显示 ----
@@ -543,7 +543,7 @@ const cards = computed(() => {
     },
     temp: {
       title: t('card.temp'), value: maxTemp.value ? fmtC(maxTemp.value.v) : '-',
-      sub: maxTemp.value ? maxTemp.value.key.replace(/-thermal$/, '') : '',
+      sub: maxTemp.value ? tempName(maxTemp.value.key, locale.value) : '',
       bar: maxTemp.value ? Math.min(100, Math.max(0, ((maxTemp.value.v - 35) / 50) * 100)) : null,
       color: pressureColor(maxTemp.value ? ((maxTemp.value.v - 35) / 50) * 100 : 0),
     },
@@ -570,7 +570,7 @@ const cards = computed(() => {
       color: pressureColor((sm.load1 / ((sm.cpuCores || []).length || 8)) * 100),
     },
     procs: { title: t('card.procs'), value: String(sm.procs), color: C.blue },
-    uptime: { title: t('card.uptime'), value: fmtUptime(sm.uptime, locale.value === 'zh'), color: C.cyan },
+    uptime: { title: t('card.uptime'), value: fmtUptime(sm.uptime, locale.value), color: C.cyan },
   }
 })
 </script>
@@ -604,7 +604,7 @@ const cards = computed(() => {
     <!-- 卡片（拖 ⠿ 排序） -->
     <div class="cards">
       <div v-for="(cid, i) in cardOrder" :key="cid" :data-id="cid"
-        :class="['card-wrap', { wide: cid === 'net' }]">
+        :class="['card-wrap', { wide: cid === 'net' }]" :title="cid === 'temp' ? tempTip(locale.value) : undefined">
         <span class="grip" :title="t('ctrl.dragTip')"
           @pointerdown="startDrag('cards', i, $event)">&nbsp;&#10625;&nbsp;</span>
         <StatCard v-if="cards[cid]" v-bind="cards[cid]" />

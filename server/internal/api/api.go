@@ -55,6 +55,8 @@ func New(col *collect.Collector, st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("/api/config/export", s.gate(s.configExport))
 	mux.HandleFunc("/api/config/import", s.gate(s.configImport))
 	mux.HandleFunc("/api/data/clear", s.gate(s.dataClear))
+	mux.HandleFunc("/api/history/export", s.gate(s.historyExport))
+	mux.HandleFunc("/api/history/import", s.gate(s.historyImport))
 	mux.HandleFunc("/api/processes", s.gateRO(s.processes))
 	mux.HandleFunc("/api/alerts", s.gateRO(s.alerts))
 	mux.HandleFunc("/api/alerts/rules", s.gate(s.alertRules))

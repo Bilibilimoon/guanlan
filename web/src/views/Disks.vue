@@ -4,8 +4,11 @@ import { useI18n } from 'vue-i18n'
 import LiveChart from '../components/LiveChart.vue'
 import { getJSON, poll } from '../api'
 import { fmtBytes, fmtBps, fmtC, fmtDur, pressureColor } from '../fmt'
+import { useColResize } from '../colresize'
 
 const { t, locale } = useI18n()
+const HCOLS = [{ key: 'dev', w: 100 }, { key: 'io', w: 110 }, { key: 'r', w: 100 }, { key: 'w', w: 100 }, { key: 'temp', w: 90 }, { key: 'ioerr', w: 80 }, { key: 'state', w: 110 }]
+const { widths: hcw, thResize: hcR } = useColResize('diskHealth', Object.fromEntries(HCOLS.map((c) => [c.key, c.w])))
 const latest = ref(null)
 const rows = ref([])
 let stop = null
@@ -100,7 +103,7 @@ const mountRows = computed(() => {
     <div class="ctrl">
       <span class="ctrl-label">{{ t('ctrl.window') }}</span>
       <button v-for="w in WINDOWS" :key="w" :class="['rbtn', { active: winSec === w }]"
-        @click="winSec = w; reload()">{{ fmtDur(w, locale === 'zh') }}</button>
+        @click="winSec = w; reload()">{{ fmtDur(w, locale) }}</button>
     </div>
 
     <section class="panel">
@@ -110,9 +113,11 @@ const mountRows = computed(() => {
     <section class="panel">
       <h3>{{ t('disk.health') }}</h3>
       <table>
+        <colgroup><col v-for="c in HCOLS" :key="c.key" :style="{ width: (hcw[c.key] || c.w) + 'px' }" /></colgroup>
         <thead><tr>
-          <th>{{ t('disk.dev') }}</th><th>{{ t('disk.ioNow') }}</th><th>R</th><th>W</th>
-          <th>{{ t('disk.temp') }}</th><th>IO err</th><th>{{ t('disk.state') }}</th>
+          <th v-for="c in HCOLS" :key="c.key" @pointerdown="hcR(c.key, $event)">
+            {{ { dev: t('disk.dev'), io: t('disk.ioNow'), r: 'R', w: 'W', temp: t('disk.temp'), ioerr: 'IO err', state: t('disk.state') }[c.key] }}<span class="colgrip"></span>
+          </th>
         </tr></thead>
         <tbody>
           <tr v-for="r in diskRows" :key="r.dev">
@@ -148,8 +153,10 @@ const mountRows = computed(() => {
 .rbtn.active { color: var(--text); background: var(--bg); border-color: var(--border); }
 .panel { margin-top: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
 .panel h3 { margin: 2px 0 8px; font-size: 13px; color: var(--muted); font-weight: 500; }
-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 10px 4px 0; white-space: nowrap; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 10px 4px 0; white-space: nowrap; position: relative; }
+.colgrip { position: absolute; right: 0; top: 0; bottom: 0; width: 10px; cursor: col-resize; }
+th:hover .colgrip { background: rgba(47, 129, 247, 0.35); border-radius: 2px; }
 td { padding: 6px 10px 6px 0; border-top: 1px solid var(--border); white-space: nowrap; }
 .mono { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
 .bad { color: var(--red); font-weight: 600; }

@@ -60,7 +60,7 @@ export default {
   hist: {
     r10m: '10分钟', r1h: '1小时', r1d: '1天', r1w: '1周', r1M: '1月', r1y: '1年',
     groupLabel: '指标',
-    group: { usage: '占用', thermal: '温度', network: '网络', disk: '磁盘', load: '负载' },
+    group: { usage: '占用', thermal: '温度', network: '网络', disk: '磁盘', load: '负载', fan: '风扇' },
     hint: '滚轮缩放时间轴：放大到最近时段自动切换更细的数据粒度（L0 原始 / L1 5分钟 / L2 1小时）。',
   },
   proc: {
@@ -153,5 +153,10 @@ export default {
     clearConfirm: '确认清空',
     clearDone: '历史数据已清空',
     cancel: '取消',
+    histExport: '历史数据',
+    histExportBtn: '导出历史（含配置）',
+    histImportBtn: '导入历史',
+    histImportFail: '导入失败：仅支持由同配置（序列完全一致的）观澜导出的文件',
+    histImportDone: '导入完成（合计 {n} 行）',
   },
 }

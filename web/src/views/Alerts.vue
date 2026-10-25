@@ -51,7 +51,7 @@ const HCOLS = [
   { key: 'started', w: 150 }, { key: 'resolved', w: 150 }, { key: 'metric', w: 170 },
   { key: 'value', w: 90 }, { key: 'level', w: 90 },
 ]
-const { widths: hw, startResize: hResize } = useColResize('alertHist', Object.fromEntries(HCOLS.map((c) => [c.key, c.w])))
+const { widths: hw, thResize: hResize } = useColResize('alertHist', Object.fromEntries(HCOLS.map((c) => [c.key, c.w])))
 
 function fmtTime(ts) {
   if (!ts) return '-'
@@ -109,8 +109,8 @@ function fmtTime(ts) {
           <col v-for="c in HCOLS" :key="c.key" :style="{ width: (hw[c.key] || c.w) + 'px' }" />
         </colgroup>
         <thead><tr>
-          <th v-for="c in HCOLS" :key="c.key">
-            {{ t(`alert.h.${c.key}`) }}<span class="colgrip" @pointerdown="hResize(c.key, $event)"></span>
+          <th v-for="c in HCOLS" :key="c.key" @pointerdown="hResize(c.key, $event)">
+            {{ t(`alert.h.${c.key}`) }}<span class="colgrip"></span>
           </th>
         </tr></thead>
         <tbody>
@@ -144,6 +144,6 @@ td.crit, .crit { color: var(--red); }
 .mono { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
 .sel { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; font-size: 12px; }
 .num { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; width: 76px; font-size: 12px; }
-.colgrip { position: absolute; right: 0; top: 0; bottom: 0; width: 7px; cursor: col-resize; }
-.colgrip:hover { background: rgba(47, 129, 247, 0.35); }
+.colgrip { position: absolute; right: 0; top: 0; bottom: 0; width: 10px; cursor: col-resize; }
+th:hover .colgrip { background: rgba(47, 129, 247, 0.35); border-radius: 2px; }
 </style>
