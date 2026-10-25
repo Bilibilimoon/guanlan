@@ -1,0 +1,20 @@
+#!/bin/bash
+# 应用设置保存后调用：重启使环境变量变化生效（保持原有运行状态）
+DIR="$(cd "$(dirname "$0")" && pwd)"
+APP_ROOT="$(readlink -f "$DIR/..")"
+export TRIM_APPDEST="${TRIM_APPDEST:-$APP_ROOT/target}"
+export TRIM_PKGVAR="${TRIM_PKGVAR:-$APP_ROOT/var}"
+
+# fnOS 以包用户执行生命周期脚本；手动以 root 调用时先降权，
+# 避免留下 root 属主的文件导致下次启动失败
+if [ "$(id -u)" = "0" ] && command -v setpriv >/dev/null 2>&1; then
+    exec setpriv --reuid=guanlan --regid=guanlan --init-groups -- "$0" "$@"
+fi
+
+was_running=0
+"$DIR/main" status >/dev/null 2>&1 && was_running=1
+"$DIR/main" stop
+if [ "${was_running}" = "1" ]; then
+    "$DIR/main" start
+fi
+exit 0

@@ -1,0 +1,3 @@
+#!/bin/bash
+# 卸载完成后调用（@appdata 数据按 fnOS 规则保留，无需处理）
+exit 0

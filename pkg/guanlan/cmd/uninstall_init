@@ -1,0 +1,19 @@
+#!/bin/bash
+# 卸载前停止运行实例（@appdata 数据目录按 fnOS 规则保留）
+PID_FILE="${TRIM_PKGVAR:-/vol1/@appdata/guanlan}/guanlan.pid"
+SOCKET="${TRIM_APPDEST:-/vol1/@appcenter/guanlan}/guanlan.sock"
+
+if [ -r "${PID_FILE}" ]; then
+    pid=$(head -n 1 "${PID_FILE}" | tr -d '[:space:]')
+    if [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null; then
+        kill -TERM "${pid}" 2>/dev/null
+        sleep 1
+        kill -KILL "${pid}" 2>/dev/null || true
+    fi
+    rm -f "${PID_FILE}"
+fi
+for p in $(pgrep -x guanlan-arm64 2>/dev/null; pgrep -x guanlan-amd64 2>/dev/null); do
+    kill -TERM "$p" 2>/dev/null || true
+done
+rm -f "${SOCKET}" 2>/dev/null
+exit 0

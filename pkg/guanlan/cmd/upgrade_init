@@ -1,0 +1,5 @@
+#!/bin/bash
+# 升级前调用：停止旧实例
+DIR="$(cd "$(dirname "$0")" && pwd)"
+"$DIR/main" stop >/dev/null 2>&1 || true
+exit 0

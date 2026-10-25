@@ -1,0 +1,17 @@
+{
+  ".url": {
+    "guanlan.main": {
+      "title": "观澜",
+      "icon": "images/icon_{0}.png",
+      "type": "iframe",
+      "protocol": "",
+      "gatewayPrefix": "/app/guanlan",
+      "gatewaySocket": "guanlan.sock",
+      "url": "/app/guanlan/",
+      "allUsers": false,
+      "control": {
+        "accessPerm": "readonly"
+      }
+    }
+  }
+}

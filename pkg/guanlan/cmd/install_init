@@ -1,0 +1,4 @@
+#!/bin/bash
+# 安装初始化：建数据目录（观澜无向导配置项）
+mkdir -p "${TRIM_PKGVAR:-/vol1/@appdata/guanlan}"
+exit 0

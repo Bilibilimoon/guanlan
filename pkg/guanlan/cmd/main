@@ -1,0 +1,85 @@
+#!/bin/bash
+# 观澜 (guanlan) 生命周期: start | stop | status | restart
+# 以专用用户 guanlan 运行，无特权；管理页经 fnOS 统一网关（Unix socket）。
+
+LOG_FILE="${TRIM_PKGVAR:-/vol1/@appdata/guanlan}/guanlan.log"
+PID_FILE="${TRIM_PKGVAR:-/vol1/@appdata/guanlan}/guanlan.pid"
+SOCKET="${TRIM_APPDEST:-/vol1/@appcenter/guanlan}/guanlan.sock"
+
+case "$(uname -m)" in
+    x86_64|amd64) BIN="${TRIM_APPDEST}/server/guanlan-amd64" ;;
+    *)            BIN="${TRIM_APPDEST}/server/guanlan-arm64" ;;
+esac
+
+check_pid() { [ -n "$1" ] && kill -0 "$1" 2>/dev/null; }
+
+find_pid() {
+    local pid
+    if [ -r "${PID_FILE}" ]; then
+        pid=$(head -n 1 "${PID_FILE}" | tr -d '[:space:]')
+        if check_pid "$pid"; then echo "$pid"; return 0; fi
+    fi
+    pid=$(pgrep -x "$(basename "${BIN}")" 2>/dev/null | head -n 1)
+    if check_pid "$pid"; then echo "$pid"; return 0; fi
+    return 1
+}
+
+start() {
+    mkdir -p "${TRIM_PKGVAR}"
+    if pid=$(find_pid); then
+        echo "already running (pid ${pid})"
+        return 0
+    fi
+    [ -x "${BIN}" ] || { echo "binary missing: ${BIN}"; return 1; }
+    # 端口可由 fnOS 应用设置修改（向导变量 port 变环境变量；默认 9780）
+    export port="${port:-9780}"
+    nohup "${BIN}" -sock "${SOCKET}" -data "${TRIM_PKGVAR}" >>"${LOG_FILE}" 2>&1 &
+    echo $! > "${PID_FILE}"
+    sleep 1
+    if pid=$(find_pid); then
+        echo "started (pid ${pid})"
+        return 0
+    fi
+    echo "start failed, see ${LOG_FILE}"
+    return 1
+}
+
+stop() {
+    local pid
+    if ! pid=$(find_pid); then
+        rm -f "${PID_FILE}"
+        echo "not running"
+        return 0
+    fi
+    kill "$pid" 2>/dev/null
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        check_pid "$pid" || break
+        sleep 0.3
+    done
+    check_pid "$pid" && kill -9 "$pid" 2>/dev/null
+    rm -f "${PID_FILE}" "${SOCKET}"
+    echo "stopped"
+    return 0
+}
+
+status() {
+    local pid
+    if pid=$(find_pid); then
+        if curl -s --unix-socket "${SOCKET}" --max-time 3 http://localhost/api/healthz 2>/dev/null | grep -q ok; then
+            echo "running (pid ${pid}, healthz ok)"
+            return 0
+        fi
+        echo "running (pid ${pid}, healthz not ready)"
+        return 0
+    fi
+    echo "stopped"
+    return 1
+}
+
+case "${1:-}" in
+    start)   start ;;
+    stop)    stop ;;
+    status)  status ;;
+    restart) stop; start ;;
+    *)       echo "usage: $0 {start|stop|status|restart}"; exit 1 ;;
+esac
