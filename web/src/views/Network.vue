@@ -8,7 +8,7 @@ import { useColResize } from '../colresize'
 
 const { t, locale } = useI18n()
 const NCOLS = [{ key: 'iface', w: 150 }, { key: 'rx', w: 110 }, { key: 'tx', w: 110 }, { key: 'IPv4', w: 140 }, { key: 'IPv6', w: 420 }]
-const { widths: ncw, thResize: ncR } = useColResize('netIf', Object.fromEntries(NCOLS.map((c) => [c.key, c.w])))
+const { widths: ncw, thResize: ncR, thCursor: ncCursor } = useColResize('netIf', Object.fromEntries(NCOLS.map((c) => [c.key, c.w])))
 const latest = ref(null)
 const meta = ref(null)
 const rows = ref([])
@@ -126,7 +126,7 @@ const ifaceRows = computed(() => {
 .rbtn.active { color: var(--text); background: var(--bg); border-color: var(--border); }
 .panel { margin-top: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
 .panel h3 { margin: 2px 0 8px; font-size: 13px; color: var(--muted); font-weight: 500; }
-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+table { border-collapse: collapse; font-size: 13px; table-layout: fixed; width: 100%; }
 th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 10px 4px 0; position: relative; white-space: nowrap; }
 .colgrip { position: absolute; right: 0; top: 0; bottom: 0; width: 10px; cursor: col-resize; }
 th:hover .colgrip { background: rgba(47, 129, 247, 0.35); border-radius: 2px; }

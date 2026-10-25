@@ -165,6 +165,19 @@ Vue3 + Vite + vue-i18n + ECharts 按需（gzip ~210KB）。页面懒加载分 ch
 8. 工作区文件偶发 000 权限继承——构建前 `chmod -R u+rwX`。
 9. gofmt 会重排对齐导致 Edit old_string 失配——批量改动用脚本（python）更稳。
 10. fnOS 桌面 iframe 里页面用相对路径请求 API（base './'），兼容网关前缀。
+11. **表头列宽拖动**：`table-layout:fixed` 下表格**必须有显式 width**（如
+    width:100%），否则 Chromium 直接忽略 col 的像素宽（渲染成内容宽）；拖动
+    过程直改 `<col>` 元素 style.width（不依赖响应式链路），松手才回写状态。
+12. **前端改动的验证要用真实浏览器**：本机 headless Chromium + playwright-core
+    （executablePath=/usr/bin/chromium）可直接驱动 dev 实例做点击/拖拽断言。
+    三个坑：a) 装机版占 9780，dev 实例必须换端口，否则 curl/测试打的是生产版
+    （403→自愈逻辑无限刷新，现象极具迷惑性）；b) 只 `npm run build` 不重编 Go
+    的话 embed 里还是旧产物（症状：改了代码测试结果分毫不差）；c) Vue 内联
+    事件传多个参数时 handler 签名必须对应（`thCursor(col,e)` 写成
+    `(e)` 会拿字符串当事件，静默抛错）。
+13. **.gitignore 无斜杠模式匹配任意层级**：`guanlan` 意在排除根目录构建产物，
+    却把 `pkg/guanlan/`、`server/cmd/guanlan/` 整目录忽略——源文件静默缺失。
+    排除根级产物用 `/guanlan` 锚定；仓库完整性用 `git ls-files` 对比磁盘核查。
 
 ## 8. 发版清单
 

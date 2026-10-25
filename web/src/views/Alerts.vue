@@ -51,7 +51,7 @@ const HCOLS = [
   { key: 'started', w: 150 }, { key: 'resolved', w: 150 }, { key: 'metric', w: 170 },
   { key: 'value', w: 90 }, { key: 'level', w: 90 },
 ]
-const { widths: hw, thResize: hResize } = useColResize('alertHist', Object.fromEntries(HCOLS.map((c) => [c.key, c.w])))
+const { widths: hw, thResize: hResize, thCursor: hCursor } = useColResize('alertHist', Object.fromEntries(HCOLS.map((c) => [c.key, c.w])))
 
 function fmtTime(ts) {
   if (!ts) return '-'
@@ -106,10 +106,11 @@ function fmtTime(ts) {
       <h3>{{ t('alert.history') }}</h3>
       <table>
         <colgroup>
-          <col v-for="c in HCOLS" :key="c.key" :style="{ width: (hw[c.key] || c.w) + 'px' }" />
+          <col v-for="c in HCOLS.slice(0, -1)" :key="c.key" :style="{ width: (hw[c.key] || c.w) + 'px' }" />
+          <col /><!-- 末列自适应剩余空间 -->
         </colgroup>
         <thead><tr>
-          <th v-for="c in HCOLS" :key="c.key" @pointerdown="hResize(c.key, $event)">
+          <th v-for="c in HCOLS" :key="c.key" @mousemove="hCursor(c.key, $event)" @pointerdown="hResize(c.key, $event)">
             {{ t(`alert.h.${c.key}`) }}<span class="colgrip"></span>
           </th>
         </tr></thead>
@@ -137,7 +138,7 @@ function fmtTime(ts) {
 .acked { color: var(--muted); font-size: 12px; }
 .ok { color: var(--green); }
 .hint { color: var(--muted); font-size: 13px; }
-table { border-collapse: collapse; font-size: 13px; table-layout: fixed; min-width: 100%; }
+table { border-collapse: collapse; font-size: 13px; table-layout: fixed; width: 100%; }
 th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 8px 4px 0; position: relative; white-space: nowrap; }
 td { padding: 5px 8px 5px 0; border-top: 1px solid var(--border); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 td.crit, .crit { color: var(--red); }

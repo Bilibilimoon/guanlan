@@ -56,7 +56,7 @@ const COLS = [
   { key: 'startAt', w: 110 },
   { key: 'cmd', w: 520 },
 ]
-const { widths, thResize } = useColResize('procs', Object.fromEntries(COLS.map((c) => [c.key, c.w])))
+const { widths, thResize, thCursor } = useColResize('procs', Object.fromEntries(COLS.map((c) => [c.key, c.w])))
 
 function setSort(k) {
   if (sortKey.value === k) sortDesc.value = !sortDesc.value
@@ -82,10 +82,12 @@ const zh = computed(() => locale.value)
     <section class="panel">
       <table>
         <colgroup>
-          <col v-for="c in COLS" :key="c.key" :style="{ width: (widths[c.key] || c.w) + 'px' }" />
+          <col v-for="c in COLS.slice(0, -1)" :key="c.key" :style="{ width: (widths[c.key] || c.w) + 'px' }" />
+          <col /><!-- 末列自适应剩余空间 -->
         </colgroup>
         <thead><tr>
           <th v-for="c in COLS" :key="c.key" :class="{ sortable: c.key !== 'cmd' }"
+            @mousemove="thCursor(c.key, $event)"
             @pointerdown="thResize(c.key, $event)" @click="c.key !== 'cmd' && setSort(c.key)">
             {{ t(`proc.col.${c.key}`) }}
             <span v-if="sortKey === c.key" class="arrow">{{ sortDesc ? '▼' : '▲' }}</span>
@@ -118,7 +120,7 @@ const zh = computed(() => locale.value)
 .search { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; font-size: 13px; width: 240px; }
 .sel { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; font-size: 12px; cursor: pointer; }
 .panel { margin-top: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; overflow-x: auto; }
-table { border-collapse: collapse; font-size: 13px; table-layout: fixed; min-width: 100%; }
+table { border-collapse: collapse; font-size: 13px; table-layout: fixed; width: 100%; }
 th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 10px 4px 0; white-space: nowrap; position: relative; user-select: none; }
 th.sortable { cursor: pointer; }
 th.sortable:hover { color: var(--text); }
