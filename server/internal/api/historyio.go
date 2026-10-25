@@ -36,7 +36,9 @@ func (s *Server) historyExport(w http.ResponseWriter, r *http.Request) {
 
 // historyImport POST（body = 导出的 db 文件字节）：校验与当前库序列集合一致
 // （"配置完全一样的机器"），一致则把三层时序数据合并进当前库。
+// ?dryRun=1 只做校验与统计、不写库（前端用于先给用户预览确认，防误导入）。
 func (s *Server) historyImport(w http.ResponseWriter, r *http.Request) {
+	dryRun := r.URL.Query().Get("dryRun") == "1"
 	if r.Method != http.MethodPost {
 		http.Error(w, `{"error":"method"}`, http.StatusMethodNotAllowed)
 		return
@@ -91,6 +93,19 @@ func (s *Server) historyImport(w http.ResponseWriter, r *http.Request) {
 	}
 	if onlySrc > 0 || onlyDst > 0 {
 		bad("metrics_mismatch", http.StatusUnprocessableEntity)
+		return
+	}
+
+	// 统计源库三层行数（dryRun 返回给前端做导入前预览）
+	var l0n, l1n, l2n int64
+	db.QueryRow(`SELECT COUNT(*) FROM src_import.points_l0`).Scan(&l0n)
+	db.QueryRow(`SELECT COUNT(*) FROM src_import.points_l1`).Scan(&l1n)
+	db.QueryRow(`SELECT COUNT(*) FROM src_import.points_l2`).Scan(&l2n)
+	if dryRun {
+		db.Exec(`DETACH DATABASE src_import`)
+		writeJSON(w, map[string]any{
+			"ok": true, "l0": l0n, "l1": l1n, "l2": l2n, "total": l0n + l1n + l2n,
+		})
 		return
 	}
 

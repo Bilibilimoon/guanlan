@@ -52,7 +52,7 @@ const estimate = computed(() => {
 })
 const storage = computed(() => meta.value?.storage)
 
-// 配置导入 / 导出
+// 配置导入 / 导出（导入先预览确认，防误导入）
 function exportConfig() {
   getJSON('api/config/export').then((d) => {
     const blob = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' })
@@ -65,23 +65,42 @@ function exportConfig() {
 }
 const fileInput = ref(null)
 const importMsg = ref('')
-function importConfig(ev) {
+// 配置导入确认状态
+const cfgPending = ref(null) // {file, json}
+function pickConfig(ev) {
   const f = ev.target.files?.[0]
   if (!f) return
   const reader = new FileReader()
-  reader.onload = async () => {
+  reader.onload = () => {
     try {
-      const body = JSON.parse(reader.result)
-      const res = await postJSON('api/config/import', body)
-      importMsg.value = t('set.importDone', { n: (res.applied || []).join(', ') })
-      cfg.value = await getJSON('api/config')
+      const json = JSON.parse(reader.result)
+      if (json.app && json.app !== 'guanlan') throw new Error('not guanlan')
+      cfgPending.value = { file: f, json }
     } catch (e) {
       importMsg.value = t('set.importFail')
+      setTimeout(() => (importMsg.value = ''), 3000)
     }
-    setTimeout(() => (importMsg.value = ''), 3000)
   }
   reader.readAsText(f)
   ev.target.value = ''
+}
+async function doImportConfig() {
+  const p = cfgPending.value
+  cfgPending.value = null
+  if (!p) return
+  try {
+    const res = await postJSON('api/config/import', p.json)
+    importMsg.value = t('set.importDone', { n: (res.applied || []).join(', ') })
+    cfg.value = await getJSON('api/config')
+  } catch (e) {
+    importMsg.value = t('set.importFail')
+  }
+  setTimeout(() => (importMsg.value = ''), 4000)
+}
+function fmtSize(n) {
+  if (n > 1 << 30) return (n / (1 << 30)).toFixed(1) + ' GB'
+  if (n > 1 << 20) return (n / (1 << 20)).toFixed(1) + ' MB'
+  return Math.max(1, Math.round(n / 1024)) + ' KB'
 }
 
 // 历史数据导出 / 导入
@@ -103,27 +122,55 @@ function exportHistory() {
 const histFile = ref(null)
 const histMsg = ref('')
 const histBusy = ref(false)
-function importHistory(ev) {
+const histPending = ref(null) // {file, l0, l1, l2, total}
+async function pickHistory(ev) {
   const f = ev.target.files?.[0]
   if (!f) return
   histBusy.value = true
-  fetch('api/history/import', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/octet-stream', 'X-Requested-With': 'guanlan' },
-    body: f,
-  })
-    .then(async (r) => {
-      if (r.ok) {
-        const d = await r.json()
-        histMsg.value = t('set.histImportDone', { n: d.totalRows })
-        meta.value = await getJSON('api/meta')
-      } else {
-        histMsg.value = t('set.histImportFail')
-      }
+  histMsg.value = ''
+  try {
+    // 第一步：dryRun 校验（是否本机/同配置导出、可解析），不写任何数据
+    const r = await fetch('api/history/import?dryRun=1', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream', 'X-Requested-With': 'guanlan' },
+      body: f,
     })
-    .catch(() => { histMsg.value = t('set.histImportFail') })
-    .finally(() => { histBusy.value = false; setTimeout(() => (histMsg.value = ''), 5000) })
+    if (r.ok) {
+      histPending.value = { file: f, ...(await r.json()) }
+    } else {
+      histMsg.value = t('set.histImportFail')
+      setTimeout(() => (histMsg.value = ''), 5000)
+    }
+  } catch (e) {
+    histMsg.value = t('set.histImportFail')
+    setTimeout(() => (histMsg.value = ''), 5000)
+  }
+  histBusy.value = false
   ev.target.value = ''
+}
+async function doImportHistory() {
+  const p = histPending.value
+  histPending.value = null
+  if (!p) return
+  histBusy.value = true
+  try {
+    const r = await fetch('api/history/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream', 'X-Requested-With': 'guanlan' },
+      body: p.file,
+    })
+    if (r.ok) {
+      const d = await r.json()
+      histMsg.value = t('set.histImportDone', { n: d.totalRows })
+      meta.value = await getJSON('api/meta')
+    } else {
+      histMsg.value = t('set.histImportFail')
+    }
+  } catch (e) {
+    histMsg.value = t('set.histImportFail')
+  }
+  histBusy.value = false
+  setTimeout(() => (histMsg.value = ''), 5000)
 }
 
 // 清空历史数据（模态二次确认）
@@ -207,11 +254,45 @@ async function doClear() {
         <label>{{ t('set.configBackup') }}</label>
         <button class="btn" @click="exportConfig">{{ t('set.export') }}</button>
         <button class="btn" @click="fileInput && fileInput.click()">{{ t('set.import') }}</button>
-        <input ref="fileInput" type="file" accept="application/json,.json" style="display:none" @change="importConfig" />
+        <input ref="fileInput" type="file" accept="application/json,.json" style="display:none" @change="pickConfig" />
         <span v-if="importMsg" class="ok">{{ importMsg }}</span>
+      </div>
+      <div class="row">
+        <label>{{ t('set.histExport') }}</label>
+        <button class="btn" @click="exportHistory">{{ t('set.histExportBtn') }}</button>
+        <button class="btn" :disabled="histBusy" @click="histFile && histFile.click()">{{ t('set.histImportBtn') }}</button>
+        <input ref="histFile" type="file" accept=".db,application/octet-stream" style="display:none" @change="pickHistory" />
+        <span v-if="histMsg" class="ok">{{ histMsg }}</span>
       </div>
       <div class="row"><label>{{ t('set.version') }}</label><b class="mono">{{ meta?.version || '-' }}</b></div>
     </section>
+
+    <!-- 配置导入确认模态 -->
+    <div v-if="cfgPending" class="modal-mask" @click.self="cfgPending = null">
+      <div class="modal">
+        <h4>{{ t('set.cfgImpTitle') }}</h4>
+        <p>{{ t('set.cfgImpBody', { f: cfgPending.file.name }) }}</p>
+        <p class="hint">{{ t('set.cfgImpNote') }}</p>
+        <div class="modal-btns">
+          <button class="btn" @click="cfgPending = null">{{ t('set.cancel') }}</button>
+          <button class="btn" @click="doImportConfig">{{ t('set.cfgImpConfirm') }}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 历史导入确认模态 -->
+    <div v-if="histPending" class="modal-mask" @click.self="histPending = null">
+      <div class="modal">
+        <h4>{{ t('set.histImpTitle') }}</h4>
+        <p>{{ t('set.histImpBody', { f: histPending.file.name }) }}</p>
+        <p class="mono">L0 {{ histPending.l0 }} ｜ L1 {{ histPending.l1 }} ｜ L2 {{ histPending.l2 }}（{{ t('set.rows') }}）</p>
+        <p class="warn">{{ t('set.histImpWarn') }}</p>
+        <div class="modal-btns">
+          <button class="btn" @click="histPending = null">{{ t('set.cancel') }}</button>
+          <button class="danger-btn" :disabled="histBusy" @click="doImportHistory">{{ t('set.histImpConfirm') }}</button>
+        </div>
+      </div>
+    </div>
 
     <!-- 清空确认模态 -->
     <div v-if="showClear" class="modal-mask" @click.self="showClear = false">
