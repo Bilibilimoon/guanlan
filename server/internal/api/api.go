@@ -81,7 +81,8 @@ func New(col *collect.Collector, st *store.Store, opt Options) http.Handler {
 // gate 管理员校验中间件：生产模式仅放行 X-Trim-Isadmin=1。
 func (s *Server) gate(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !s.opt.Dev && r.Header.Get("X-Trim-Isadmin") != "1" {
+		// 网关注入的管理员标识值为字符串 true（非 1）
+		if !s.opt.Dev && !strings.EqualFold(r.Header.Get("X-Trim-Isadmin"), "true") {
 			http.Error(w, `{"error":"admin_only"}`, http.StatusForbidden)
 			return
 		}
