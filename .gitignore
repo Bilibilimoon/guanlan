@@ -1,0 +1,16 @@
+node_modules/
+web/dist/
+server/internal/api/dist/*
+!server/internal/api/dist/.gitkeep
+guanlan
+guanlan-arm64
+guanlan-amd64
+data/
+*.db
+*.db-wal
+*.db-shm
+tools/go/
+
+# 打包产物（二进制与 fpk 不进 git，Release 时另附）
+pkg/guanlan/app/server/
+pkg/guanlan/*.fpk
