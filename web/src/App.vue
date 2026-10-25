@@ -12,7 +12,7 @@ const History = defineAsyncComponent(() => import('./views/History.vue'))
 const Alerts = defineAsyncComponent(() => import('./views/Alerts.vue'))
 const Settings = defineAsyncComponent(() => import('./views/Settings.vue'))
 
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const tab = ref('overview')
 const tabs = ['overview', 'processes', 'thermal', 'network', 'disks', 'history', 'alerts', 'settings']
 const denied = ref(false)
@@ -29,12 +29,6 @@ onMounted(() => {
   }, 30000)
 })
 onBeforeUnmount(() => stopAlertPoll && stopAlertPoll())
-
-function switchLang() {
-  locale.value = locale.value === 'zh' ? 'en' : 'zh'
-  localStorage.setItem('guanlan.lang', locale.value)
-}
-const langLabel = computed(() => (locale.value === 'zh' ? 'EN' : '中'))
 </script>
 
 <template>
@@ -52,7 +46,6 @@ const langLabel = computed(() => (locale.value === 'zh' ? 'EN' : '中'))
           <span v-if="tb === 'alerts' && unreadAlerts > 0" class="badge">●</span>
         </button>
       </nav>
-      <button class="lang" @click="switchLang">{{ langLabel }}</button>
     </header>
 
     <div v-if="denied" class="denied">{{ t('adminOnly') }}</div>
@@ -102,10 +95,6 @@ body { font: 14px/1.5 -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei
 .tab.active { color: var(--text); background: var(--panel); }
 .tab.alerting { color: var(--red); font-weight: 600; }
 .badge { font-size: 10px; }
-.lang {
-  margin-left: auto; background: var(--panel); border: 1px solid var(--border);
-  color: var(--muted); border-radius: 6px; padding: 4px 10px; cursor: pointer;
-}
 .denied {
   margin-top: 24px; padding: 16px; text-align: center;
   background: rgba(248, 81, 73, 0.1); border: 1px solid var(--red); border-radius: 8px;

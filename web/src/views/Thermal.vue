@@ -90,6 +90,7 @@ const cards = computed(() => {
     </div>
     <section class="panel">
       <LiveChart :series="series" y-type="celsius" height="48vh" />
+      <p class="hint">{{ t('thermal.zoneNote') }}</p>
     </section>
   </div>
 </template>
@@ -99,6 +100,7 @@ const cards = computed(() => {
 .ctrl-label { color: var(--muted); font-size: 12px; }
 .rbtn { background: none; border: 1px solid transparent; color: var(--muted); border-radius: 6px; padding: 3px 10px; cursor: pointer; font-size: 12px; }
 .rbtn.active { color: var(--text); background: var(--bg); border-color: var(--border); }
+.hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
 .cards { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); margin-top: 12px; }
 .panel { margin-top: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px 6px; }
 </style>

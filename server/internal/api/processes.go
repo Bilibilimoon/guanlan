@@ -17,6 +17,7 @@ type ProcInfo struct {
 	State   string  `json:"state"`
 	CPUPct  float64 `json:"cpu"`     // 单核基准，>100 表示占用多核
 	RSS     uint64  `json:"rss"`     // bytes
+	VmSwap  uint64  `json:"vmSwap"`  // bytes
 	StartAt int64   `json:"startAt"` // unix 秒
 }
 
@@ -74,12 +75,24 @@ func listProcesses() []ProcInfo {
 			pi.CPUPct = float64(ticks-prev) / clkTck / dt * 100
 		}
 
-		// RSS
+		// RSS / Swap
 		if mb, err := os.ReadFile("/proc/" + e.Name() + "/statm"); err == nil {
 			mf := strings.Fields(string(mb))
 			if len(mf) >= 2 {
 				r, _ := strconv.ParseUint(mf[1], 10, 64)
 				pi.RSS = r * pageSize
+			}
+		}
+		if sb, err := os.ReadFile("/proc/" + e.Name() + "/status"); err == nil {
+			for _, line := range strings.Split(string(sb), "\n") {
+				if strings.HasPrefix(line, "VmSwap:") {
+					f := strings.Fields(line)
+					if len(f) >= 2 {
+						v, _ := strconv.ParseUint(f[1], 10, 64)
+						pi.VmSwap = v * 1024
+					}
+					break
+				}
 			}
 		}
 		// comm / cmdline

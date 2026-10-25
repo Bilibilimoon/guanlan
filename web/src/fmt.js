@@ -19,13 +19,18 @@ export function fmtPct(n) { return `${n.toFixed(1)}%` }
 
 export function fmtC(n) { return `${n.toFixed(1)}°C` }
 
-export function fmtUptime(sec) {
+export function fmtUptime(sec, zh = true) {
   const d = Math.floor(sec / 86400)
   const h = Math.floor((sec % 86400) / 3600)
   const m = Math.floor((sec % 3600) / 60)
-  if (d > 0) return `${d}天${h}时${m}分`
-  if (h > 0) return `${h}时${m}分`
-  return `${m}分`
+  if (zh) {
+    if (d > 0) return `${d}天${h}时${m}分`
+    if (h > 0) return `${h}时${m}分`
+    return `${m}分`
+  }
+  if (d > 0) return `${d}d ${h}h ${m}m`
+  if (h > 0) return `${h}h ${m}m`
+  return `${m}m`
 }
 
 export function fmtClock(ts) {

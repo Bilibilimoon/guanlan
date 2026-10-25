@@ -31,8 +31,12 @@ function setRetain(k, v) {
   const rd = { ...cfg.value.retainDays, [k]: v }
   save({ retainDays: rd })
 }
+function setLang(v) {
+  locale.value = v
+  localStorage.setItem('guanlan.lang', v)
+}
 
-// 存储估算：行数 × 每行约 34 字节（值+主键索引页）
+// 存储估算
 const estimate = computed(() => {
   if (!cfg.value || !meta.value) return null
   const dbMs = cfg.value.dbIntervalMs
@@ -41,16 +45,59 @@ const estimate = computed(() => {
   const perDayL0 = (86400 / (dbMs / 1000)) * nMetrics * bytesPerPoint
   const rd = cfg.value.retainDays
   return {
-    l0Per30d: perDayL0 * rd.l0,
-    l1Per180d: (86400 / 300) * nMetrics * bytesPerPoint * rd.l1,
-    l2Per365d: (86400 / 3600) * nMetrics * bytesPerPoint * rd.l2,
+    l0: perDayL0 * rd.l0,
+    l1: (86400 / 300) * nMetrics * bytesPerPoint * rd.l1,
+    l2: (86400 / 3600) * nMetrics * bytesPerPoint * rd.l2,
   }
 })
-
 const storage = computed(() => meta.value?.storage)
-function switchLang() {
-  locale.value = locale.value === 'zh' ? 'en' : 'zh'
-  localStorage.setItem('guanlan.lang', locale.value)
+
+// 配置导入 / 导出
+function exportConfig() {
+  getJSON('api/config/export').then((d) => {
+    const blob = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `guanlan-config-${new Date().toISOString().slice(0, 10)}.json`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }).catch(() => {})
+}
+const fileInput = ref(null)
+const importMsg = ref('')
+function importConfig(ev) {
+  const f = ev.target.files?.[0]
+  if (!f) return
+  const reader = new FileReader()
+  reader.onload = async () => {
+    try {
+      const body = JSON.parse(reader.result)
+      const res = await postJSON('api/config/import', body)
+      importMsg.value = t('set.importDone', { n: (res.applied || []).join(', ') })
+      cfg.value = await getJSON('api/config')
+    } catch (e) {
+      importMsg.value = t('set.importFail')
+    }
+    setTimeout(() => (importMsg.value = ''), 3000)
+  }
+  reader.readAsText(f)
+  ev.target.value = ''
+}
+
+// 清空历史数据（模态二次确认）
+const showClear = ref(false)
+const clearing = ref(false)
+const clearDone = ref('')
+async function doClear() {
+  clearing.value = true
+  try {
+    await postJSON('api/data/clear', { confirm: 'CLEAR' })
+    meta.value = await getJSON('api/meta')
+    clearDone.value = t('set.clearDone')
+    showClear.value = false
+  } catch (e) { /* 忽略 */ }
+  clearing.value = false
+  setTimeout(() => (clearDone.value = ''), 3000)
 }
 </script>
 
@@ -59,13 +106,22 @@ function switchLang() {
     <section class="panel">
       <h3>{{ t('set.collect') }}</h3>
       <div class="row">
-        <span>{{ t('ctrl.sampleInterval') }}</span>
+        <label>{{ t('ctrl.sampleInterval') }}</label>
         <select class="sel" :value="cfg.intervalMs / 1000" @change="setSample(parseFloat($event.target.value))">
           <option v-for="v in SAMPLE_CHOICES" :key="v" :value="v">{{ v }}s</option>
         </select>
-        <span>{{ t('ctrl.dbInterval') }}</span>
+      </div>
+      <div class="row">
+        <label>{{ t('ctrl.dbInterval') }}</label>
         <select class="sel" :value="cfg.dbIntervalMs / 1000" @change="setDb(parseInt($event.target.value))">
           <option v-for="v in DB_CHOICES" :key="v" :value="v">{{ v }}s</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>{{ t('set.lang') }}</label>
+        <select class="sel" :value="locale" @change="setLang($event.target.value)">
+          <option value="zh">中文</option>
+          <option value="en">English</option>
         </select>
         <span v-if="saved" class="ok">{{ saved }}</span>
       </div>
@@ -74,10 +130,10 @@ function switchLang() {
     <section class="panel">
       <h3>{{ t('set.retain') }}</h3>
       <div class="row" v-for="k in ['l0', 'l1', 'l2']" :key="k">
-        <span>{{ t(`set.retain_${k}`) }}</span>
+        <label>{{ t(`set.retain_${k}`) }}</label>
         <input type="number" min="1" max="3650" class="num" :value="cfg.retainDays[k]"
           @change="setRetain(k, parseInt($event.target.value) || 1)" />
-        <span>{{ t('set.days') }}</span>
+        <span class="unit">{{ t('set.days') }}</span>
       </div>
       <p class="hint">{{ t('set.retainHint') }}</p>
     </section>
@@ -85,37 +141,74 @@ function switchLang() {
     <section class="panel">
       <h3>{{ t('set.storage') }}</h3>
       <template v-if="storage">
-        <div class="row"><span>{{ t('set.dbSize') }}</span><b>{{ fmtBytes(storage.dbBytes || 0) }}</b></div>
-        <div class="row"><span>L0 / L1 / L2</span>
+        <div class="row"><label>{{ t('set.dbSize') }}</label><b>{{ fmtBytes(storage.dbBytes || 0) }}</b></div>
+        <div class="row"><label>L0 / L1 / L2</label>
           <b class="mono">{{ storage.rows.l0 }} / {{ storage.rows.l1 }} / {{ storage.rows.l2 }} {{ t('set.rows') }}</b></div>
         <template v-if="estimate">
-          <div class="row"><span>{{ t('set.estL0') }}</span><b>≈ {{ fmtBytes(estimate.l0Per30d) }}</b></div>
-          <div class="row"><span>{{ t('set.estL1') }}</span><b>≈ {{ fmtBytes(estimate.l1Per180d) }}</b></div>
-          <div class="row"><span>{{ t('set.estL2') }}</span><b>≈ {{ fmtBytes(estimate.l2Per365d) }}</b></div>
+          <div class="row"><label>{{ t('set.estL0') }}</label><b>≈ {{ fmtBytes(estimate.l0) }}</b></div>
+          <div class="row"><label>{{ t('set.estL1') }}</label><b>≈ {{ fmtBytes(estimate.l1) }}</b></div>
+          <div class="row"><label>{{ t('set.estL2') }}</label><b>≈ {{ fmtBytes(estimate.l2) }}</b></div>
           <p class="hint">{{ t('set.estNote') }}</p>
         </template>
       </template>
+      <div class="danger-zone">
+        <button class="danger-btn" @click="showClear = true">🗑 {{ t('set.clearBtn') }}</button>
+        <p class="hint">{{ t('set.clearHint') }}</p>
+        <span v-if="clearDone" class="ok">{{ clearDone }}</span>
+      </div>
     </section>
 
     <section class="panel">
-      <h3>{{ t('set.misc') }}</h3>
+      <h3>{{ t('set.backup') }}</h3>
       <div class="row">
-        <span>{{ t('set.lang') }}</span>
-        <button class="sel" @click="switchLang">{{ locale === 'zh' ? 'English' : '中文' }}</button>
+        <label>{{ t('set.configBackup') }}</label>
+        <button class="btn" @click="exportConfig">{{ t('set.export') }}</button>
+        <button class="btn" @click="fileInput && fileInput.click()">{{ t('set.import') }}</button>
+        <input ref="fileInput" type="file" accept="application/json,.json" style="display:none" @change="importConfig" />
+        <span v-if="importMsg" class="ok">{{ importMsg }}</span>
       </div>
-      <div class="row"><span>{{ t('set.version') }}</span><b class="mono">{{ meta?.version || '-' }}</b></div>
+      <div class="row"><label>{{ t('set.version') }}</label><b class="mono">{{ meta?.version || '-' }}</b></div>
     </section>
+
+    <!-- 清空确认模态 -->
+    <div v-if="showClear" class="modal-mask" @click.self="showClear = false">
+      <div class="modal">
+        <h4>{{ t('set.clearTitle') }}</h4>
+        <p>{{ t('set.clearBody') }}</p>
+        <p class="warn">{{ t('set.clearWarn') }}</p>
+        <div class="modal-btns">
+          <button class="btn" @click="showClear = false">{{ t('set.cancel') }}</button>
+          <button class="danger-btn" :disabled="clearing" @click="doClear">
+            {{ clearing ? '…' : t('set.clearConfirm') }}</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .panel { margin-top: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; }
 .panel h3 { margin: 2px 0 8px; font-size: 13px; color: var(--muted); font-weight: 500; }
-.row { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 13px; flex-wrap: wrap; }
-.row span { color: var(--muted); min-width: 150px; }
-.sel { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px; font-size: 13px; cursor: pointer; }
-.num { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; width: 90px; font-size: 13px; }
+.row { display: grid; grid-template-columns: 170px auto auto; align-items: center; gap: 8px; padding: 6px 0; font-size: 13px; }
+.row label { color: var(--muted); }
+.unit { color: var(--muted); }
+.sel { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px; font-size: 13px; cursor: pointer; justify-self: start; }
+.num { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; width: 90px; font-size: 13px; justify-self: start; }
+.btn { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 14px; font-size: 13px; cursor: pointer; }
 .ok { color: var(--green); font-size: 12px; }
-.hint { color: var(--muted); font-size: 12px; }
+.hint { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
 .mono { font-family: ui-monospace, Consolas, monospace; }
+.danger-zone { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border); }
+.danger-btn {
+  background: rgba(248, 81, 73, 0.12); color: var(--red);
+  border: 1px solid var(--red); border-radius: 6px;
+  padding: 6px 16px; font-size: 13px; cursor: pointer; font-weight: 600;
+}
+.danger-btn:hover { background: rgba(248, 81, 73, 0.25); }
+.modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.modal { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; max-width: 460px; }
+.modal h4 { margin: 0 0 8px; font-size: 15px; }
+.modal p { font-size: 13px; color: var(--text); }
+.modal .warn { color: var(--red); }
+.modal-btns { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
 </style>

@@ -7,6 +7,7 @@ package api
 
 import (
 	"compress/gzip"
+	"context"
 	"embed"
 	"encoding/json"
 	"io"
@@ -46,13 +47,16 @@ func New(col *collect.Collector, st *store.Store, opt Options) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/api/healthz", s.healthz)
-	mux.HandleFunc("/api/realtime", s.gate(s.realtime))
-	mux.HandleFunc("/api/ring", s.gate(s.ring))
-	mux.HandleFunc("/api/series", s.gate(s.series))
-	mux.HandleFunc("/api/meta", s.gate(s.meta))
+	mux.HandleFunc("/api/realtime", s.gateRO(s.realtime))
+	mux.HandleFunc("/api/ring", s.gateRO(s.ring))
+	mux.HandleFunc("/api/series", s.gateRO(s.series))
+	mux.HandleFunc("/api/meta", s.gateRO(s.meta))
 	mux.HandleFunc("/api/config", s.gate(s.config))
-	mux.HandleFunc("/api/processes", s.gate(s.processes))
-	mux.HandleFunc("/api/alerts", s.gate(s.alerts))
+	mux.HandleFunc("/api/config/export", s.gate(s.configExport))
+	mux.HandleFunc("/api/config/import", s.gate(s.configImport))
+	mux.HandleFunc("/api/data/clear", s.gate(s.dataClear))
+	mux.HandleFunc("/api/processes", s.gateRO(s.processes))
+	mux.HandleFunc("/api/alerts", s.gateRO(s.alerts))
 	mux.HandleFunc("/api/alerts/rules", s.gate(s.alertRules))
 	mux.HandleFunc("/api/alerts/ack", s.gate(s.alertAck))
 
@@ -78,7 +82,7 @@ func New(col *collect.Collector, st *store.Store, opt Options) http.Handler {
 	return s.gzip(mux)
 }
 
-// gate 管理员校验中间件：生产模式仅放行 X-Trim-Isadmin=1。
+// gate 管理员校验中间件（写接口）：生产模式仅放行网关注入 X-Trim-Isadmin: true。
 func (s *Server) gate(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// 网关注入的管理员标识值为字符串 true（非 1）
@@ -88,6 +92,34 @@ func (s *Server) gate(h http.HandlerFunc) http.HandlerFunc {
 		}
 		h(w, r)
 	}
+}
+
+// gateRO 只读接口：管理员可用；TCP 直连（经 MarkTCP 标记）仅放行 GET——
+// 局域网只读监控可用，写/管理操作永远拿不到。
+func (s *Server) gateRO(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.opt.Dev || strings.EqualFold(r.Header.Get("X-Trim-Isadmin"), "true") {
+			h(w, r)
+			return
+		}
+		if v, _ := r.Context().Value(tcpROKey).(bool); v && r.Method == http.MethodGet {
+			h(w, r)
+			return
+		}
+		http.Error(w, `{"error":"admin_only"}`, http.StatusForbidden)
+	}
+}
+
+type tcpCtxKey int
+
+const tcpROKey tcpCtxKey = 1
+
+// MarkTCP 包装 TCP listener 的 handler：请求进入只读通道（无法从外部伪造，
+// context 只在本进程内设置）。
+func MarkTCP(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), tcpROKey, true)))
+	})
 }
 
 // gzip 压缩 JSON 响应（环形缓冲/序列数据体积较大）。

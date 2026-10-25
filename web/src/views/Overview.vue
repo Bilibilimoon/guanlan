@@ -570,7 +570,7 @@ const cards = computed(() => {
       color: pressureColor((sm.load1 / ((sm.cpuCores || []).length || 8)) * 100),
     },
     procs: { title: t('card.procs'), value: String(sm.procs), color: C.blue },
-    uptime: { title: t('card.uptime'), value: fmtUptime(sm.uptime), color: C.cyan },
+    uptime: { title: t('card.uptime'), value: fmtUptime(sm.uptime, locale.value === 'zh'), color: C.cyan },
   }
 })
 </script>
