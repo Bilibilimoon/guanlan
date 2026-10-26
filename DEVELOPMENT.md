@@ -216,6 +216,12 @@ Vue3 + Vite + vue-i18n + ECharts 按需（gzip ~210KB）。页面懒加载分 ch
     `dispatchAction({type:'dataZoom',start:0,end:100})` 会合成一次 dataZoom 事件，
     把刚切的 L1 按"可视跨度小"又拉回 L0，需短暂守卫（800ms）忽略；c) 快速切档
     时并发请求晚到的会覆盖新结果（高亮与内容不符）——加请求序号，只应用最新一次。
+20. **历史页窗口档位按分组区分**（v0.5.12）：温度/网络/磁盘要和概览用同一套
+    10秒~24小时档位，占用/功耗/负载/风扇保留长窗口。两套档位各自需要独立的
+    当前值（`fineSec` / `coarseSec`）并在该组切回时沿用，否则切一次组就把别的组选的
+    档位覆盖。实现上 `rangeSec` 变成 computed（取当前组的档位），因此在
+    `loadWindow`（滚轮换层后回写窗口）里**不能**再写 `rangeSec.value`——必须先判组，
+    写回对应那套的 ref，否则 Vue 直接报 "computed value is readonly"。
 
 ## 8. 发版清单
 
@@ -237,3 +243,4 @@ Vue3 + Vite + vue-i18n + ECharts 按需（gzip ~210KB）。页面懒加载分 ch
 - 0.5.9 功耗估算：概览卡片 + 历史曲线（本机无功率计，模型推算，标注 EST）
 - 0.5.10 历史页滚轮缩放修复（补注册 dataZoom inside）、缩放换层 NaN/竞态/合成事件
 - 0.5.11 滚轮缩放改为以鼠标位置为锚点（接管 wheel：convertFromPixel 反推 start/end）
+- 0.5.12 历史页窗口档位按分组区分：温度/网络/磁盘与概览一致（10秒~24小时），其余保留长窗口

@@ -9,26 +9,40 @@ const { t, locale } = useI18n()
 const C = { blue: '#2f81f7', green: '#3fb950', purple: '#bc8cff', orange: '#d29922', red: '#f85149', cyan: '#39c5cf', pink: '#ff7b72', lime: '#7ee787' }
 const COLORS = [C.blue, C.green, C.orange, C.purple, C.cyan, C.red, C.lime, C.pink]
 
-const RANGES = [
-  { sec: 600, key: 'r10m' },
-  { sec: 3600, key: 'r1h' },
-  { sec: 86400, key: 'r1d' },
-  { sec: 7 * 86400, key: 'r1w' },
-  { sec: 30 * 86400, key: 'r1M' },
-  { sec: 365 * 86400, key: 'r1y' },
+// 两套窗口档：温度/网络/磁盘跟概览（win.*）一致，看实时到一天内的细节；
+// 占用/功耗/负载/风扇用长窗口（hist.r*），长历史在这里才有意义
+const FINE_RANGES = [
+  { sec: 10, ns: 'win', key: 's10' },
+  { sec: 30, ns: 'win', key: 's30' },
+  { sec: 60, ns: 'win', key: 'm1' },
+  { sec: 300, ns: 'win', key: 'm5' },
+  { sec: 900, ns: 'win', key: 'm15' },
+  { sec: 3600, ns: 'win', key: 'h1' },
+  { sec: 21600, ns: 'win', key: 'h6' },
+  { sec: 86400, ns: 'win', key: 'h24' },
+]
+const COARSE_RANGES = [
+  { sec: 600, ns: 'hist', key: 'r10m' },
+  { sec: 3600, ns: 'hist', key: 'r1h' },
+  { sec: 86400, ns: 'hist', key: 'r1d' },
+  { sec: 7 * 86400, ns: 'hist', key: 'r1w' },
+  { sec: 30 * 86400, ns: 'hist', key: 'r1M' },
+  { sec: 365 * 86400, ns: 'hist', key: 'r1y' },
 ]
 
 const GROUPS = [
   { id: 'usage', yType: 'percent', metrics: ['cpu', 'mem_pct', 'npu_pct', 'gpu_pct', 'swap_pct'] },
   { id: 'power', yType: 'watt', metrics: ['power_w'] },
-  { id: 'thermal', yType: 'celsius', prefix: 'temp.' },
-  { id: 'network', yType: 'bytes', prefix: 'net.' },
-  { id: 'disk', yType: 'bytes', prefix: 'disk.' },
+  { id: 'thermal', yType: 'celsius', prefix: 'temp.', fine: true },
+  { id: 'network', yType: 'bytes', prefix: 'net.', fine: true },
+  { id: 'disk', yType: 'bytes', prefix: 'disk.', fine: true },
   { id: 'load', yType: 'count', metrics: ['load1', 'load5', 'load15'] },
   { id: 'fan', yType: 'rpm', metrics: ['fan'] },
 ]
 
-const rangeSec = ref(7 * 86400)
+// 各套档位各自记住上次选择；首次进入用概览的默认 15 分钟 / 历史页的默认 7 天
+const fineSec = ref(900)
+const coarseSec = ref(7 * 86400)
 // 切档位/换层后组件会 dispatchAction 重置 dataZoom，那会合成一次 dataZoom 事件；
 // 短暂忽略，避免刚切到 L1 就被这次事件按"可视跨度小"又拉回 L0
 let zoomGuardUntil = 0
@@ -40,6 +54,8 @@ const loading = ref(false)
 
 const metaRef = ref(null)
 const groupDef = computed(() => GROUPS.find((g) => g.id === group.value))
+const ranges = computed(() => (groupDef.value.fine ? FINE_RANGES : COARSE_RANGES))
+const rangeSec = computed(() => (groupDef.value.fine ? fineSec.value : coarseSec.value))
 
 // 组内指标清单：固定列表或按前缀从已知指标里取
 function metricsOf() {
@@ -112,8 +128,15 @@ function defaultLevel(sec) {
 }
 
 function setRange(sec) {
-  rangeSec.value = sec
+  if (groupDef.value.fine) fineSec.value = sec
+  else coarseSec.value = sec
   loadRange(sec, defaultLevel(sec))
+}
+
+// 切分组时窗口档也跟着换一套：各自用上次在该套里选的档位
+function switchGroup(id) {
+  group.value = id
+  setRange(rangeSec.value)
 }
 
 // 滚轮缩放：按可视跨度动态换层（换层后保留可视窗口）
@@ -153,7 +176,9 @@ async function loadWindow(start, end, lv) {
     })
     series.value = out
     level.value = lv
-    rangeSec.value = Math.round(end - start)
+    // 换层后窗口档位跟着当前可视跨度走（对应那套档位表）
+    if (groupDef.value.fine) fineSec.value = Math.round(end - start)
+    else coarseSec.value = Math.round(end - start)
   } finally {
     loading.value = false
   }
@@ -166,12 +191,12 @@ onMounted(() => setRange(rangeSec.value))
   <div class="hist">
     <div class="ctrl">
       <div class="seg">
-        <button v-for="r in RANGES" :key="r.sec" :class="['segb', { active: rangeSec === r.sec }]"
-          @click="setRange(r.sec)">{{ t(`hist.${r.key}`) }}</button>
+        <button v-for="r in ranges" :key="r.sec" :class="['segb', { active: rangeSec === r.sec }]"
+          @click="setRange(r.sec)">{{ t(`${r.ns}.${r.key}`) }}</button>
       </div>
       <div class="seg">
         <button v-for="g in GROUPS" :key="g.id" :class="['segb', { active: group === g.id }]"
-          @click="group = g.id; setRange(rangeSec)">{{ t(`hist.group.${g.id}`) }}</button>
+          @click="switchGroup(g.id)">{{ t(`hist.group.${g.id}`) }}</button>
       </div>
       <span class="ctrl-label">{{ levelTip }}</span>
       <span v-if="loading" class="ctrl-label">…</span>
