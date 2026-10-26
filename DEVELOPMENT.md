@@ -198,6 +198,18 @@ Vue3 + Vite + vue-i18n + ECharts 按需（gzip ~210KB）。页面懒加载分 ch
     同理 **localStorage 里存的卡片顺序不会包含后来新增的卡片**——加载时按默认
     顺序补齐缺失 id（`mergeOrder`），否则新卡片永远不显示。
 
+17. **ECharts 按需引入必须注册 dataZoom**：`echarts.use([LineChart, GridComponent,
+    LegendComponent, TooltipComponent, CanvasRenderer])` 少了
+    `DataZoomInsideComponent` 时，`dataZoom: [{type:'inside', zoomOnMouseWheel:true}]`
+    不报任何错但完全不生效——滚轮在有 tooltip 的图表上翻不动时间轴（v0.5.9 用户
+    反馈）。按需引入下"配置合法但交互缺失"是静默失败，改交互务必真机/浏览器验证。
+18. **滚轮缩放的三个连带坑**：a) `chart.getOption().dataZoom[0]` 在百分比驱动下
+    `startValue/endValue` 是空的，直接使用得到 NaN，会向下游发 `start=NaN`（后端
+    400）——要用 start/end 百分比乘当前数据时间范围换算成秒；b) 切档位时的
+    `dispatchAction({type:'dataZoom',start:0,end:100})` 会合成一次 dataZoom 事件，
+    把刚切的 L1 按"可视跨度小"又拉回 L0，需短暂守卫（800ms）忽略；c) 快速切档
+    时并发请求晚到的会覆盖新结果（高亮与内容不符）——加请求序号，只应用最新一次。
+
 ## 8. 发版清单
 
 1. `server/cmd/guanlan/main.go` 的 `appVersion` 与 `pkg/guanlan/manifest` 的
@@ -216,3 +228,4 @@ Vue3 + Vite + vue-i18n + ECharts 按需（gzip ~210KB）。页面懒加载分 ch
 - 0.4.1 bug 修复：并发 panic、TCP 伪造头、UTF-8 截断、告警窗口上限、文档
 - 0.5.x 移动端打磨（列宽拖动/触摸 tooltip/窄屏横向滚动）、历史导出导入、三语
 - 0.5.9 功耗估算：概览卡片 + 历史曲线（本机无功率计，模型推算，标注 EST）
+- 0.5.10 历史页滚轮缩放修复（补注册 dataZoom inside）、缩放换层 NaN/竞态/合成事件

@@ -2,11 +2,12 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as echarts from 'echarts/core'
 import { LineChart } from 'echarts/charts'
-import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
+import { GridComponent, LegendComponent, TooltipComponent, DataZoomInsideComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { fmtBytes, fmtClockMs, fmtFullMs, fmtAxisMs } from '../fmt'
 
-echarts.use([LineChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer])
+// 按需引入：dataZoom 也要注册，否则 inside 型 dataZoom 的配置不报错但不生效（滚轮缩不了）
+echarts.use([LineChart, GridComponent, LegendComponent, TooltipComponent, DataZoomInsideComponent, CanvasRenderer])
 
 const props = defineProps({
   // [{ name, color, points: [[unixSec, value], ...] }]（秒，进图前统一转毫秒）
@@ -157,9 +158,32 @@ function bindHover() {
   if (props.zoom) {
     chart.on('dataZoom', () => {
       const dz = chart.getOption().dataZoom
-      if (dz && dz[0] && emit) {
-        emit('viewchange', { startValue: dz[0].startValue, endValue: dz[0].endValue })
+      if (!dz || !dz[0]) return
+      let s = dz[0].startValue
+      let e = dz[0].endValue
+      if (!isFinite(s) || !isFinite(e)) {
+        // dataZoom 用百分比（start/end）驱动时 startValue/endValue 是空的，
+        // 按当前数据的时间范围换算成秒，避免上抛 NaN 导致非法查询
+        let mn = Infinity
+        let mx = -Infinity
+        for (const ser of props.series) {
+          for (const p of ser.points) {
+            if (p[0] < mn) mn = p[0]
+            if (p[0] > mx) mx = p[0]
+          }
+        }
+        if (!isFinite(mn) || mx <= mn) return
+        const p0 = isFinite(dz[0].start) ? dz[0].start : 0
+        const p1 = isFinite(dz[0].end) ? dz[0].end : 100
+        s = mn + ((mx - mn) * p0) / 100
+        e = mn + ((mx - mn) * p1) / 100
+      } else if (s > 1e11) {
+        // 个别情况下 startValue 是毫秒
+        s /= 1000
+        e /= 1000
       }
+      if (!isFinite(s) || !isFinite(e) || e <= s) return
+      emit('viewchange', { startSec: s, endSec: e })
     })
   }
 }

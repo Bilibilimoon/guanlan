@@ -29,6 +29,9 @@ const GROUPS = [
 ]
 
 const rangeSec = ref(7 * 86400)
+// 切档位/换层后组件会 dispatchAction 重置 dataZoom，那会合成一次 dataZoom 事件；
+// 短暂忽略，避免刚切到 L1 就被这次事件按"可视跨度小"又拉回 L0
+let zoomGuardUntil = 0
 const group = ref('usage')
 const level = ref('l0')
 const series = ref([])
@@ -53,7 +56,11 @@ const levelTip = computed(() => {
   return `${g} · ${LEVEL_LABEL[level.value]}`
 })
 
+// 并发保护：快速切档/滚轮换层时，旧请求返回后不得覆盖新请求的结果
+let loadSeq = 0
+
 async function loadRange(sec, lv, keepView = false) {
+  const seq = ++loadSeq
   loading.value = true
   try {
     if (!metaRef.value) metaRef.value = await getJSON('api/meta')
@@ -62,6 +69,7 @@ async function loadRange(sec, lv, keepView = false) {
     const ms = metricsOf()
     if (!ms.length) { series.value = []; return }
     const res = await getJSON(`api/series?metrics=${ms.join(',')}&start=${start}&end=${end}&level=${lv}`)
+    if (seq !== loadSeq) return
     const out = []
     Object.entries(res.series || {}).forEach(([name, pts], i) => {
       if (pts && pts.length) {
@@ -70,7 +78,10 @@ async function loadRange(sec, lv, keepView = false) {
     })
     series.value = out
     level.value = lv
-    if (!keepView) resetKey.value++
+    if (!keepView) {
+      zoomGuardUntil = Date.now() + 800
+      resetKey.value++
+    }
   } finally {
     loading.value = false
   }
@@ -108,13 +119,14 @@ function setRange(sec) {
 // 滚轮缩放：按可视跨度动态换层（换层后保留可视窗口）
 let zoomTimer = null
 function onViewChange(v) {
-  if (!v || v.startValue == null) return
+  if (!v) return
   clearTimeout(zoomTimer)
   zoomTimer = setTimeout(() => {
-    const s = v.startValue / 1000
-    const e = v.endValue / 1000
+    if (Date.now() < zoomGuardUntil) return // 档位切换时 resetKey 触发的合成事件，忽略
+    const s = v.startSec
+    const e = v.endSec
     const span = e - s
-    if (span <= 0) return
+    if (!isFinite(s) || !isFinite(e) || span <= 0) return
     const now = Date.now() / 1000
     const want = span <= 2 * 86400 && s > now - 30 * 86400 ? 'l0'
       : span <= 180 * 86400 && s > now - 180 * 86400 ? 'l1'
@@ -128,11 +140,13 @@ function onViewChange(v) {
 }
 
 async function loadWindow(start, end, lv) {
+  const seq = ++loadSeq
   loading.value = true
   try {
     const ms = metricsOf()
     if (!ms.length) return
     const res = await getJSON(`api/series?metrics=${ms.join(',')}&start=${Math.floor(start)}&end=${Math.ceil(end)}&level=${lv}`)
+    if (seq !== loadSeq) return
     const out = []
     Object.entries(res.series || {}).forEach(([name, pts], i) => {
       if (pts && pts.length) out.push({ name: prettyName(name), color: COLORS[i % COLORS.length], points: pts })
