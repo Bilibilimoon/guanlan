@@ -185,6 +185,19 @@ Vue3 + Vite + vue-i18n + ECharts 按需（gzip ~210KB）。页面懒加载分 ch
     却把 `pkg/guanlan/`、`server/cmd/guanlan/` 整目录忽略——源文件静默缺失。
     排除根级产物用 `/guanlan` 锚定；仓库完整性用 `git ls-files` 对比磁盘核查。
 
+15. **功耗只能估算**：RK3588 板无功率计——hwmon 只有 thermal/pwmfan/drivetemp，
+    Type-C PD 控制器（tcpm_source_psy）在 DC 供电时 online=0 全 0，无 RAPL/SCMI
+    powercap，12V 输入电压只在 root 的 debugfs（regulator_summary）且 current 列
+    恒为 0mA，设备树无 INA 传感器。故 `collect/power.go` 用经验模型：基线 6W +
+    CPU 8W×占用 + GPU/NPU（扣 20% 最低频底噪后）+ 每盘固定功耗（按
+    `/sys/block/*/queue/rotational` 区分机械/固态）+ I/O 忙碌增量。UI 必须标注
+    估算与误差，不得伪装成实测。
+16. **ECharts setOption 的合并残留**：切换指标组只换 series 时，上一组的
+    `yAxis.max`（如百分比组的 100）会粘在新轴上，把 11~13W 的功耗曲线压成一条
+    贴底线。`setOption(opt, { replaceMerge: ['series', 'yAxis'] })` 一并替换轴。
+    同理 **localStorage 里存的卡片顺序不会包含后来新增的卡片**——加载时按默认
+    顺序补齐缺失 id（`mergeOrder`），否则新卡片永远不显示。
+
 ## 8. 发版清单
 
 1. `server/cmd/guanlan/main.go` 的 `appVersion` 与 `pkg/guanlan/manifest` 的
@@ -201,3 +214,5 @@ Vue3 + Vite + vue-i18n + ECharts 按需（gzip ~210KB）。页面懒加载分 ch
 - 0.3.0 首个完整版（八页面+fpk）；0.3.1 修管理员误判
 - 0.4.0 TCP 只读端口、进程页增强、导入导出、清空、403 自愈
 - 0.4.1 bug 修复：并发 panic、TCP 伪造头、UTF-8 截断、告警窗口上限、文档
+- 0.5.x 移动端打磨（列宽拖动/触摸 tooltip/窄屏横向滚动）、历史导出导入、三语
+- 0.5.9 功耗估算：概览卡片 + 历史曲线（本机无功率计，模型推算，标注 EST）

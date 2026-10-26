@@ -12,13 +12,15 @@ export default {
   card: {
     cpu: 'CPU', mem: 'メモリ', swap: 'Swap / zram', npu: 'NPU', gpu: 'GPU',
     temp: '最高温度', fan: 'ファン', net: 'ネットワーク', diskIo: 'ディスク I/O',
-    load: '負荷', procs: 'プロセス数', uptime: '稼働時間',
+    power: '消費電力（推定）', load: '負荷', procs: 'プロセス数', uptime: '稼働時間',
   },
   chart: { usage: '使用率', thermal: '温度', netRate: 'ネットワーク速度', diskRate: 'ディスク I/O' },
   misc: {
     ofCores: '{n} コア', freqNow: '周波数 {mhz} MHz', activeIface: '{iface}',
     read: '読み', write: '書き', rx: '↓ 受信', tx: '↑ 送信',
     loadHint: '1/5/15 分の実行キュー平均 · 満負荷≈{n}', wan: 'WAN',
+    powerEst: '負荷モデルによる推定',
+    powerEstTip: 'この機種には電力計がありません。CPU/GPU/NPU 負荷とディスク I/O のモデルから算出した推定値で、誤差は約 ±30% です。傾向の把握用で、電気料金の計算には使えません。',
   },
   ctrl: {
     window: '時間窓', sampleInterval: 'サンプリング間隔', dbInterval: '記録粒度',
@@ -30,7 +32,8 @@ export default {
   hist: {
     r10m: '10分', r1h: '1時間', r1d: '1日', r1w: '1週', r1M: '1月', r1y: '1年',
     groupLabel: '指標',
-    group: { usage: '使用率', thermal: '温度', network: 'ネットワーク', disk: 'ディスク', load: '負荷', fan: 'ファン' },
+    group: { usage: '使用率', power: '消費電力', thermal: '温度', network: 'ネットワーク', disk: 'ディスク', load: '負荷', fan: 'ファン' },
+    powerW: '消費電力（推定）',
     hint: 'ホイールで時間軸をズーム：最近の範囲に拡大すると自動的に細かい粒度へ切替（L0 生データ / L1 5分 / L2 1時間）。',
   },
   proc: {
@@ -83,7 +86,7 @@ export default {
     clearWarn: '消去後はグラフがゼロから再開。サンプリング粒度と警告ルールには影響しません。',
     clearConfirm: '消去する', clearDone: '履歴データを消去しました', cancel: 'キャンセル',
     histExport: '履歴データ', histExportBtn: '履歴をエクスポート', histImportBtn: '履歴をインポート',
-    histImportFail: '取込失敗：同構成の観瀾がエクスポートしたファイルのみ取込できます',
+    histImportFail: '取込失敗：観瀾がエクスポートしたデータベースではないか、この機種が認識しない指標が含まれています',
     histImportDone: '取込完了（合計 {n} 行）',
   },
 }

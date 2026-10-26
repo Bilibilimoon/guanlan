@@ -25,6 +25,7 @@ export default {
     fan: '风扇',
     net: '网络',
     diskIo: '磁盘 I/O',
+    power: '功耗（估算）',
     load: '负载',
     procs: '进程数',
     uptime: '运行时长',
@@ -45,6 +46,8 @@ export default {
     tx: '↑ 上行',
     loadHint: '1/5/15 分钟运行队列均值 · 满载≈{n}',
     wan: '公网',
+    powerEst: '按负载模型估算',
+    powerEstTip: '本机没有功率计芯片：此值按 CPU/GPU/NPU 负载与磁盘 I/O 的模型推算，误差约 ±30%，只能看趋势，不能作为电费依据。',
   },
   ctrl: {
     window: '时间窗口',
@@ -60,7 +63,8 @@ export default {
   hist: {
     r10m: '10分钟', r1h: '1小时', r1d: '1天', r1w: '1周', r1M: '1月', r1y: '1年',
     groupLabel: '指标',
-    group: { usage: '占用', thermal: '温度', network: '网络', disk: '磁盘', load: '负载', fan: '风扇' },
+    group: { usage: '占用', power: '功耗', thermal: '温度', network: '网络', disk: '磁盘', load: '负载', fan: '风扇' },
+    powerW: '功耗（估算）',
     hint: '滚轮缩放时间轴：放大到最近时段自动切换更细的数据粒度（L0 原始 / L1 5分钟 / L2 1小时）。',
   },
   proc: {
@@ -158,13 +162,13 @@ export default {
     cfgImpNote: '将应用文件中的采集粒度、保留策略与告警规则；范围不合法的项会被自动跳过。',
     cfgImpConfirm: '导入配置',
     histImpTitle: '确认导入历史数据？',
-    histImpBody: '文件：{f}（校验通过：与本机指标序列一致）',
-    histImpWarn: '将与现有历史按时间戳合并覆盖（不可撤销）。仅支持由同配置的观澜导出的文件。',
+    histImpBody: '文件：{f}（校验通过：文件中的指标本机均能识别）',
+    histImpWarn: '将与现有历史按时间戳合并覆盖（不可撤销）。仅接受观澜导出的数据库文件（旧版本导出的也支持，缺的指标不会补历史）。',
     histImpConfirm: '导入历史数据',
     histExport: '历史数据',
     histExportBtn: '导出历史（含配置）',
     histImportBtn: '导入历史',
-    histImportFail: '导入失败：仅支持由同配置（序列完全一致的）观澜导出的文件',
+    histImportFail: '导入失败：不是观澜导出的数据库文件，或文件里含有本机不认识的指标',
     histImportDone: '导入完成（合计 {n} 行）',
   },
 }

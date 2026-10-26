@@ -79,19 +79,15 @@ func (s *Server) historyImport(w http.ResponseWriter, r *http.Request) {
 		bad("not_guanlan_backup", http.StatusBadRequest)
 		return
 	}
-	// 序列集合必须与当前库完全一致（导入只支持同配置机器导出的文件）
-	var onlySrc, onlyDst int
+	// 文件里出现的序列必须都是当前库认识的（防止导入别的应用/被篡改的库）；
+	// 反过来允许当前库多出序列——升级后新增指标（如 power_w）不会让旧备份失效。
+	var onlySrc int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM src_import.metrics
 		WHERE name NOT IN (SELECT name FROM main.metrics)`).Scan(&onlySrc); err != nil {
 		bad("verify_failed", http.StatusBadRequest)
 		return
 	}
-	if err := db.QueryRow(`SELECT COUNT(*) FROM main.metrics
-		WHERE name NOT IN (SELECT name FROM src_import.metrics)`).Scan(&onlyDst); err != nil {
-		bad("verify_failed", http.StatusBadRequest)
-		return
-	}
-	if onlySrc > 0 || onlyDst > 0 {
+	if onlySrc > 0 {
 		bad("metrics_mismatch", http.StatusUnprocessableEntity)
 		return
 	}

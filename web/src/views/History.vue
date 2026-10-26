@@ -20,6 +20,7 @@ const RANGES = [
 
 const GROUPS = [
   { id: 'usage', yType: 'percent', metrics: ['cpu', 'mem_pct', 'npu_pct', 'gpu_pct', 'swap_pct'] },
+  { id: 'power', yType: 'watt', metrics: ['power_w'] },
   { id: 'thermal', yType: 'celsius', prefix: 'temp.' },
   { id: 'network', yType: 'bytes', prefix: 'net.' },
   { id: 'disk', yType: 'bytes', prefix: 'disk.' },
@@ -89,6 +90,7 @@ function prettyName(name) {
     .replace('load1', 'load 1m')
     .replace('load5', 'load 5m')
     .replace('load15', 'load 15m')
+    .replace('power_w', t('hist.powerW'))
 }
 
 // 按当前层默认

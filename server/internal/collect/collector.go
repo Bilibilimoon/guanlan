@@ -71,6 +71,9 @@ type Sample struct {
 	GPUPct float64 `json:"gpuPct"` // freq/max×100
 	NPUPct float64 `json:"npuPct"`
 
+	// 整机功率估算（本机无功率计，模型推算，展示侧标注 EST）
+	PowerW float64 `json:"powerW"`
+
 	Net   map[string]NetVal  `json:"net"`
 	Disks map[string]DiskVal `json:"disks"`
 
@@ -102,6 +105,7 @@ func (s *Sample) Series() map[string]float64 {
 		"fan":       float64(s.Fan),
 		"gpu_pct":   s.GPUPct,
 		"npu_pct":   s.NPUPct,
+		"power_w":   s.PowerW,
 		"uptime":    float64(s.Uptime),
 	}
 	for k, v := range s.Temps {
@@ -151,11 +155,13 @@ type Collector struct {
 
 	last *Sample // 差分基准（仅采集 goroutine 写，读需持锁）
 
+	rot map[string]bool // 各块设备是否机械盘（构造时读一次，估算功耗用）
+
 	intervalNs atomic.Int64 // 当前采集间隔，运行时可调
 }
 
 func NewCollector(capacity int) *Collector {
-	return &Collector{ring: make([]Sample, capacity)}
+	return &Collector{ring: make([]Sample, capacity), rot: rotationalDevices()}
 }
 
 // Start 启动采集循环（阻塞调用者请用 go）。
@@ -191,6 +197,7 @@ func (c *Collector) tick() {
 	prev := c.last
 	c.mu.RUnlock()
 	deriveRates(sm, prev)
+	sm.PowerW = EstimatePowerW(sm, c.rot)
 
 	c.mu.Lock()
 	c.ring[c.head] = *sm

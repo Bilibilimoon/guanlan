@@ -25,6 +25,7 @@ export default {
     fan: 'Fan',
     net: 'Network',
     diskIo: 'Disk I/O',
+    power: 'Power (est.)',
     load: 'Load',
     procs: 'Processes',
     uptime: 'Uptime',
@@ -45,6 +46,8 @@ export default {
     tx: '↑ TX',
     loadHint: '1/5/15m run-queue avg · full load ≈ {n}',
     wan: 'WAN',
+    powerEst: 'load-model estimate',
+    powerEstTip: 'No power sensor on this device: the value comes from a CPU/GPU/NPU + disk I/O model. Expect roughly ±30% error — use it for trends, not for electricity billing.',
   },
   ctrl: {
     window: 'Window',
@@ -60,7 +63,8 @@ export default {
   hist: {
     r10m: '10m', r1h: '1h', r1d: '1d', r1w: '1w', r1M: '1M', r1y: '1y',
     groupLabel: 'Metrics',
-    group: { usage: 'Usage', thermal: 'Thermal', network: 'Network', disk: 'Disk', load: 'Load', fan: 'Fan' },
+    group: { usage: 'Usage', power: 'Power', thermal: 'Thermal', network: 'Network', disk: 'Disk', load: 'Load', fan: 'Fan' },
+    powerW: 'Power (est.)',
     hint: 'Scroll to zoom the time axis: zooming into recent ranges automatically switches to finer granularity (L0 raw / L1 5min / L2 1h).',
   },
   proc: {
@@ -158,13 +162,13 @@ export default {
     cfgImpNote: 'Applies sampling granularity, retention and alert rules; invalid entries are skipped automatically.',
     cfgImpConfirm: 'Import config',
     histImpTitle: 'Import history data?',
-    histImpBody: 'File: {f} (verified: metrics match this machine)',
-    histImpWarn: 'Merges with existing history by timestamp (cannot be undone). Only files exported by a Guanlan with identical metrics are accepted.',
+    histImpBody: 'File: {f} (verified: all metrics in the file are recognized here)',
+    histImpWarn: 'Merges with existing history by timestamp (cannot be undone). Accepts Guanlan database exports only (older exports are fine; missing metrics simply keep no history).',
     histImpConfirm: 'Import history',
     histExport: 'History data',
     histExportBtn: 'Export history (incl. config)',
     histImportBtn: 'Import history',
-    histImportFail: 'Import failed: only files exported by a Guanlan instance with identical metrics are accepted',
+    histImportFail: 'Import failed: not a Guanlan database export, or it contains metrics this machine does not know',
     histImportDone: 'Imported (total {n} rows)',
   },
 }

@@ -204,7 +204,7 @@ function setDbSec(v) {
 }
 
 // ---- 拖拽排序（指针驱动，iOS 式：拖动中其他元素实时让位）----
-const DEFAULT_CARD_ORDER = ['cpu', 'mem', 'swap', 'npu', 'gpu', 'temp', 'fan', 'net', 'diskio', 'load', 'procs', 'uptime']
+const DEFAULT_CARD_ORDER = ['cpu', 'mem', 'swap', 'npu', 'gpu', 'temp', 'fan', 'net', 'diskio', 'power', 'load', 'procs', 'uptime']
 const DEFAULT_PANEL_ORDER = ['usage', 'thermal', 'netRate', 'diskRate']
 
 function loadJSON(key, fallback) {
@@ -213,8 +213,15 @@ function loadJSON(key, fallback) {
     return v ?? fallback
   } catch (e) { return fallback }
 }
-const cardOrder = ref(loadJSON('guanlan.cardOrder', DEFAULT_CARD_ORDER))
-const panelOrder = ref(loadJSON('guanlan.panelOrder', DEFAULT_PANEL_ORDER))
+// 旧版 localStorage 存的顺序不含后来新增的卡片/面板，按默认顺序补齐，
+// 否则新卡片会一直不出现（v-for 只遍历存下来的 id）
+function mergeOrder(saved, defaults) {
+  if (!Array.isArray(saved)) return [...defaults]
+  const have = new Set(saved)
+  return [...saved, ...defaults.filter((id) => !have.has(id))]
+}
+const cardOrder = ref(mergeOrder(loadJSON('guanlan.cardOrder', null), DEFAULT_CARD_ORDER))
+const panelOrder = ref(mergeOrder(loadJSON('guanlan.panelOrder', null), DEFAULT_PANEL_ORDER))
 const panelH = ref(loadJSON('guanlan.panelH', {}))
 const panelSpan = ref(loadJSON('guanlan.panelSpan', {}))
 
@@ -564,6 +571,13 @@ const cards = computed(() => {
         color: C.green,
       }
     })(),
+    power: {
+      title: t('card.power'),
+      value: `≈ ${(sm.powerW || 0).toFixed(1)} W`,
+      sub: t('misc.powerEst'),
+      bar: Math.min(100, Math.max(0, (((sm.powerW || 0) - 5) / 13) * 100)),
+      color: C.orange,
+    },
     load: {
       title: t('card.load'), value: sm.load1.toFixed(2),
       sub: t('misc.loadHint', { n: (sm.cpuCores || []).length || 8 }),
@@ -604,7 +618,7 @@ const cards = computed(() => {
     <!-- 卡片（拖 ⠿ 排序） -->
     <div class="cards">
       <div v-for="(cid, i) in cardOrder" :key="cid" :data-id="cid"
-        :class="['card-wrap', { wide: cid === 'net' }]" :title="cid === 'temp' ? tempTip(locale.value) : undefined">
+        :class="['card-wrap', { wide: cid === 'net' }]" :title="cid === 'temp' ? tempTip(locale.value) : cid === 'power' ? t('misc.powerEstTip') : undefined">
         <span class="grip" :title="t('ctrl.dragTip')"
           @pointerdown="startDrag('cards', i, $event)">&nbsp;&#10625;&nbsp;</span>
         <StatCard v-if="cards[cid]" v-bind="cards[cid]" />

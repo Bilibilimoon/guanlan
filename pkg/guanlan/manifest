@@ -1,5 +1,5 @@
 appname                    = guanlan
-version                    = 0.5.8
+version                    = 0.5.9
 display_name               = 观澜
 desc                       = 系统监控仪表：CPU/内存/NPU/GPU/温度/风扇/网络/磁盘实时与历史曲线（10分钟~1年，滚轮缩放下钻），进程列表，磁盘健康与阈值告警。仅管理员可用。
 platform                   = all

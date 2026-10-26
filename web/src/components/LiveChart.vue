@@ -11,7 +11,7 @@ echarts.use([LineChart, GridComponent, LegendComponent, TooltipComponent, Canvas
 const props = defineProps({
   // [{ name, color, points: [[unixSec, value], ...] }]（秒，进图前统一转毫秒）
   series: { type: Array, default: () => [] },
-  // percent | celsius | bytes | rpm | count
+  // percent | celsius | bytes | rpm | watt | count
   yType: { type: String, default: 'percent' },
   height: { type: String, default: '220px' },
   legend: { type: Boolean, default: true },
@@ -34,6 +34,7 @@ function fmtVal(v) {
     case 'celsius': return `${v.toFixed(1)}°C`
     case 'bytes': return fmtBytes(v) + '/s'
     case 'rpm': return `${Math.round(v)} RPM`
+    case 'watt': return `${v.toFixed(1)} W`
     default: return String(Math.round(v * 100) / 100)
   }
 }
@@ -46,6 +47,7 @@ function yAxisOpt() {
     case 'percent': return { ...base, max: 100, axisLabel: { ...base.axisLabel, formatter: '{value}%' } }
     case 'celsius': return { ...base, axisLabel: { ...base.axisLabel, formatter: '{value}°' } }
     case 'bytes': return { ...base, axisLabel: { ...base.axisLabel, formatter: (v) => fmtBytes(v) } }
+    case 'watt': return { ...base, scale: true, axisLabel: { ...base.axisLabel, formatter: (v) => `${v}W` } }
     default: return base
   }
 }
@@ -115,9 +117,10 @@ function render() {
       itemStyle: { color: s.color },
       data: s.points.map(([t, v]) => [t * 1000, v]), // 秒 -> 毫秒（ECharts time 轴原生域）
     })),
-    // replaceMerge：只替换 series，保留 tooltip / axisPointer 等组件状态——
-    // 数据刷新不打断悬停中的 tooltip
-  }, { replaceMerge: ['series'] })
+    // replaceMerge：只替换 series / yAxis，保留 tooltip / axisPointer 等组件状态——
+    // 数据刷新不打断悬停中的 tooltip；yAxis 一并替换，避免切换分组后
+    // 上一组残留的 max/min（如百分比组的 max:100）粘在功耗等自适应轴上
+  }, { replaceMerge: ['series', 'yAxis'] })
 
   // 兜底：若 tooltip 仍被隐藏（如组件重建），按悬停像素坐标恢复
   if (lastPos) {
