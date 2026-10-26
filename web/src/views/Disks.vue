@@ -155,7 +155,7 @@ const mountRows = computed(() => {
 .ctrl-label { color: var(--muted); font-size: 12px; }
 .rbtn { background: none; border: 1px solid transparent; color: var(--muted); border-radius: 6px; padding: 3px 10px; cursor: pointer; font-size: 12px; }
 .rbtn.active { color: var(--text); background: var(--bg); border-color: var(--border); }
-.panel { margin-top: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.panel { margin-top: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; overflow-x: auto; }
 .panel h3 { margin: 2px 0 8px; font-size: 13px; color: var(--muted); font-weight: 500; }
 table { border-collapse: collapse; font-size: 13px; table-layout: fixed; width: 100%; }
 th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 10px 4px 0; white-space: nowrap; position: relative; }
