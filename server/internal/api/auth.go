@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
+	"log"
+	"net"
 	"net/http"
 	"time"
 )
@@ -19,7 +21,20 @@ import (
 const (
 	authIterations = 50000
 	authCacheTTL   = 15 * time.Minute
+	// 同一来源连续失败达到该次数后进入冷却，冷却期内直接拒绝、不再计算哈希
+	authMaxFails = 5
+	// 失败表内存上限：超过就清理过期项，仍超限则整体清空（丢限速状态不影响正确性）
+	authFailLimit = 4096
 )
+
+// 冷却时长做成变量，便于单测缩短；生产固定 60 秒。
+var authCooldown = 60 * time.Second
+
+type authFail struct {
+	n      int
+	until  time.Time
+	logged bool // 阈值日志只打一次，避免刷日志
+}
 
 // hashPassword 生成加盐迭代摘要（纯 SHA-256，不引入额外依赖）。
 func hashPassword(pass, salt string) string {
@@ -90,6 +105,8 @@ func (s *Server) authOK(r *http.Request, user, salt, hash string) bool {
 
 // authTCP 只拦截 TCP 直连通道（context 标记由 MarkTCP 设置）；
 // /api/healthz 免认证（健康检查与网关联通探测依赖它）。
+// 失败限速按来源 IP（RemoteAddr，绝不信任 X-Forwarded-For）：连续失败 5 次后
+// 冷却 60 秒，冷却期内直接 401、不跑哈希，避免错误请求打满 CPU。
 func (s *Server) authTCP(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if v, _ := r.Context().Value(tcpROKey).(bool); !v {
@@ -101,14 +118,96 @@ func (s *Server) authTCP(next http.Handler) http.Handler {
 			return
 		}
 		user, salt, hash, ok := s.authConfigured()
-		if !ok || s.authOK(r, user, salt, hash) {
+		if !ok {
 			next.ServeHTTP(w, r)
 			return
 		}
-		w.Header().Set("WWW-Authenticate", `Basic realm="Guanlan", charset="UTF-8"`)
-		w.Header().Set("Cache-Control", "no-store")
-		http.Error(w, "authentication required", http.StatusUnauthorized)
+		ip := clientIP(r)
+		if s.authThrottled(ip) {
+			s.rejectAuth(w)
+			return
+		}
+		if s.authOK(r, user, salt, hash) {
+			s.clearAuthFail(ip)
+			next.ServeHTTP(w, r)
+			return
+		}
+		s.noteAuthFail(ip)
+		s.rejectAuth(w)
 	})
+}
+
+func (s *Server) rejectAuth(w http.ResponseWriter) {
+	w.Header().Set("WWW-Authenticate", `Basic realm="Guanlan", charset="UTF-8"`)
+	w.Header().Set("Cache-Control", "no-store")
+	http.Error(w, "authentication required", http.StatusUnauthorized)
+}
+
+// clientIP 取 TCP 对端地址；不读任何转发头（可伪造）。
+func clientIP(r *http.Request) string {
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		return host
+	}
+	return r.RemoteAddr
+}
+
+// authThrottled 该来源是否仍在冷却期。
+func (s *Server) authThrottled(ip string) bool {
+	s.failMu.Lock()
+	defer s.failMu.Unlock()
+	f, ok := s.authFails[ip]
+	return ok && time.Now().Before(f.until)
+}
+
+// noteAuthFail 记一次失败：首次失败与"进入冷却"各打一条脱敏日志（只记 IP）。
+func (s *Server) noteAuthFail(ip string) {
+	now := time.Now()
+	s.failMu.Lock()
+	if len(s.authFails) > authFailLimit {
+		for k, v := range s.authFails {
+			if !now.Before(v.until) && v.n == 1 {
+				delete(s.authFails, k)
+			}
+		}
+		if len(s.authFails) > authFailLimit {
+			s.authFails = map[string]*authFail{}
+		}
+	}
+	f := s.authFails[ip]
+	if f == nil {
+		f = &authFail{}
+		s.authFails[ip] = f
+	}
+	f.n++
+	var msg string
+	switch {
+	case f.n == 1:
+		msg = "TCP 认证失败：来源 " + ip
+	case f.n >= authMaxFails:
+		// 冷却结束后再错一次立即重新锁定（限速真正生效），日志只在第一次锁定时打
+		f.until = now.Add(authCooldown)
+		if !f.logged {
+			f.logged = true
+			msg = "TCP 认证失败次数过多，来源 " + ip + " 暂停认证 " + authCooldown.String()
+		}
+	}
+	s.failMu.Unlock()
+	if msg != "" {
+		log.Print(msg)
+	}
+}
+
+func (s *Server) clearAuthFail(ip string) {
+	s.failMu.Lock()
+	delete(s.authFails, ip)
+	s.failMu.Unlock()
+}
+
+// resetAuthCache 清空"校验通过"缓存（改密码/关闭认证后旧凭据必须立即失效）。
+func (s *Server) resetAuthCache() {
+	s.authMu.Lock()
+	s.authCache = map[[32]byte]time.Time{}
+	s.authMu.Unlock()
 }
 
 // setAuth 保存/清除凭据（由 /api/config 的管理员通道调用）。
@@ -124,7 +223,12 @@ func (s *Server) setAuth(user, pass string) error {
 	if err := s.st.SetMeta("auth_salt", salt); err != nil {
 		return err
 	}
-	return s.st.SetMeta("auth_hash", hash)
+	if err := s.st.SetMeta("auth_hash", hash); err != nil {
+		return err
+	}
+	// 旧凭据的"校验通过"缓存必须立即失效，否则改密码后旧密码还能用 15 分钟
+	s.resetAuthCache()
+	return nil
 }
 
 func (s *Server) clearAuth() error {
@@ -133,6 +237,7 @@ func (s *Server) clearAuth() error {
 			return err
 		}
 	}
+	s.resetAuthCache()
 	return nil
 }
 

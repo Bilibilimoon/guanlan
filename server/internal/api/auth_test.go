@@ -4,8 +4,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func basic(u, p string) map[string]string {
@@ -97,5 +99,89 @@ func TestAuthRejectsTooShort(t *testing.T) {
 	rr := post(h, "/api/config", `{"authEnabled":true,"authUser":"a","authPass":"123"}`, admin)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("短密码应 400，得到 %d", rr.Code)
+	}
+}
+
+// TestAuthPasswordChangeInvalidatesCache 改密码后，旧凭据的"校验通过"缓存必须立即失效。
+func TestAuthPasswordChangeInvalidatesCache(t *testing.T) {
+	h := newTestServer(t)
+	tcp := MarkTCP(h)
+	admin := map[string]string{"X-Trim-Isadmin": "true", "X-Requested-With": "guanlan"}
+
+	if rr := post(h, "/api/config", `{"authEnabled":true,"authUser":"admin","authPass":"old-pass"}`, admin); rr.Code != http.StatusOK {
+		t.Fatalf("设置密码失败: %d", rr.Code)
+	}
+	// 这一步会让旧凭据进入 15 分钟缓存
+	if rr := get(tcp, "/api/meta", basic("admin", "old-pass")); rr.Code != http.StatusOK {
+		t.Fatalf("旧密码登录应 200，得到 %d", rr.Code)
+	}
+	if rr := post(h, "/api/config", `{"authEnabled":true,"authUser":"admin","authPass":"new-pass"}`, admin); rr.Code != http.StatusOK {
+		t.Fatalf("更新密码失败: %d", rr.Code)
+	}
+	if rr := get(tcp, "/api/meta", basic("admin", "old-pass")); rr.Code != http.StatusUnauthorized {
+		t.Fatalf("改密码后旧凭据应立即失效（401），得到 %d", rr.Code)
+	}
+	if rr := get(tcp, "/api/meta", basic("admin", "new-pass")); rr.Code != http.StatusOK {
+		t.Fatalf("新密码应 200，得到 %d", rr.Code)
+	}
+}
+
+// TestAuthThrottle 连续失败达到阈值后进入冷却：冷却期内即使密码正确也拒绝，
+// 冷却结束后恢复；失败计数按来源 IP 记录。
+func TestAuthThrottle(t *testing.T) {
+	old := authCooldown
+	authCooldown = 80 * time.Millisecond
+	t.Cleanup(func() { authCooldown = old })
+
+	h := newTestServer(t)
+	tcp := MarkTCP(h)
+	admin := map[string]string{"X-Trim-Isadmin": "true", "X-Requested-With": "guanlan"}
+	if rr := post(h, "/api/config", `{"authEnabled":true,"authUser":"admin","authPass":"correct-pass"}`, admin); rr.Code != http.StatusOK {
+		t.Fatalf("设置密码失败: %d", rr.Code)
+	}
+
+	for i := 0; i < authMaxFails; i++ {
+		if rr := get(tcp, "/api/meta", basic("admin", "wrong")); rr.Code != http.StatusUnauthorized {
+			t.Fatalf("第 %d 次错误应 401，得到 %d", i+1, rr.Code)
+		}
+	}
+	// 冷却期内不跑哈希，正确密码也直接拒绝——这是限速的关键
+	if rr := get(tcp, "/api/meta", basic("admin", "correct-pass")); rr.Code != http.StatusUnauthorized {
+		t.Fatalf("冷却期内应拒绝（401），得到 %d", rr.Code)
+	}
+	time.Sleep(120 * time.Millisecond)
+	if rr := get(tcp, "/api/meta", basic("admin", "correct-pass")); rr.Code != http.StatusOK {
+		t.Fatalf("冷却结束后应放行（200），得到 %d", rr.Code)
+	}
+}
+
+// TestAuthThrottleDifferentIPs 不同来源互不影响：一个 IP 被锁不波及另一个。
+func TestAuthThrottleDifferentIPs(t *testing.T) {
+	h := newTestServer(t)
+	tcp := MarkTCP(h)
+	admin := map[string]string{"X-Trim-Isadmin": "true", "X-Requested-With": "guanlan"}
+	post(h, "/api/config", `{"authEnabled":true,"authUser":"admin","authPass":"correct-pass"}`, admin)
+
+	// 用两个不同来源地址打错
+	for i := 0; i < authMaxFails; i++ {
+		for _, ip := range []string{"192.0.2.10:1234", "192.0.2.20:1234"} {
+			req := httptest.NewRequest("GET", "/api/meta", nil)
+			req.RemoteAddr = ip
+			req.SetBasicAuth("admin", "wrong")
+			w := httptest.NewRecorder()
+			tcp.ServeHTTP(w, req)
+			if w.Code != http.StatusUnauthorized {
+				t.Fatalf("%s 错误密码应 401，得到 %d", ip, w.Code)
+			}
+		}
+	}
+	// 两个 IP 都被锁；换第三个 IP 不应受影响（但本测试只证明按 IP 分桶）
+	req := httptest.NewRequest("GET", "/api/meta", nil)
+	req.RemoteAddr = "192.0.2.30:1234"
+	req.SetBasicAuth("admin", "correct-pass")
+	w := httptest.NewRecorder()
+	tcp.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("未失败过的来源应放行（200），得到 %d", w.Code)
 	}
 }

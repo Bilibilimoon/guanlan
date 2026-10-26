@@ -47,10 +47,17 @@ type Server struct {
 
 	authMu    sync.Mutex
 	authCache map[[32]byte]time.Time
+
+	failMu    sync.Mutex
+	authFails map[string]*authFail
 }
 
 func New(col *collect.Collector, st *store.Store, opt Options) http.Handler {
-	s := &Server{col: col, st: st, opt: opt, pub: newPublicIPProber(), authCache: map[[32]byte]time.Time{}}
+	s := &Server{
+		col: col, st: st, opt: opt, pub: newPublicIPProber(),
+		authCache: map[[32]byte]time.Time{},
+		authFails: map[string]*authFail{},
+	}
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/api/healthz", s.healthz)
