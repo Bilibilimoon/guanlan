@@ -25,7 +25,8 @@ const emit = defineEmits(['viewchange'])
 const el = ref(null)
 let chart = null
 let ro = null
-let lastPos = null // 悬停中的像素坐标（canvas 系）：数据刷新后据此恢复 tooltip
+let roOutside = null // 图表外按下的全局监听（卸载时移除）
+let lastPos = null // 悬停中的像素坐标（canvas 系）：仅鼠标悬停记录；数据刷新后据此恢复 tooltip
 
 function fmtVal(v) {
   switch (props.yType) {
@@ -128,11 +129,28 @@ function render() {
 }
 
 function bindHover() {
-  // zrender 层事件：坐标最可靠
-  chart.getZr().on('mousemove', (e) => {
-    lastPos = { x: e.zrX, y: e.zrY }
+  const elRef = el.value
+  // 鼠标：记录悬停位置（数据刷新后据此恢复 tooltip）
+  elRef.addEventListener('pointermove', (e) => {
+    if (e.pointerType === 'mouse') lastPos = { x: e.offsetX, y: e.offsetY }
   })
-  chart.getZr().on('globalout', () => { lastPos = null })
+  elRef.addEventListener('pointerleave', () => { lastPos = null })
+
+  // 触摸：抬起/取消即隐藏浮窗（触摸端没有 globalout，ECharts 默认会一直挂着）；
+  // 触摸不记录 lastPos，数据刷新也不会把浮窗"恢复"出来
+  const hideTip = () => {
+    lastPos = null
+    if (chart) chart.dispatchAction({ type: 'hideTip' })
+  }
+  elRef.addEventListener('pointerup', (e) => { if (e.pointerType !== 'mouse') hideTip() })
+  elRef.addEventListener('pointercancel', hideTip)
+
+  // 手指/鼠标点到图表之外：隐藏遗留浮窗
+  roOutside = (e) => {
+    if (!elRef.contains(e.target)) hideTip()
+  }
+  window.addEventListener('pointerdown', roOutside, true)
+
   if (props.zoom) {
     chart.on('dataZoom', () => {
       const dz = chart.getOption().dataZoom
@@ -160,6 +178,7 @@ onMounted(() => {
 watch(() => props.series, render, { deep: false })
 
 onBeforeUnmount(() => {
+  if (roOutside) window.removeEventListener('pointerdown', roOutside, true)
   if (ro) ro.disconnect()
   if (chart) { chart.dispose(); chart = null }
 })

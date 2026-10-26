@@ -175,7 +175,13 @@ Vue3 + Vite + vue-i18n + ECharts 按需（gzip ~210KB）。页面懒加载分 ch
     的话 embed 里还是旧产物（症状：改了代码测试结果分毫不差）；c) Vue 内联
     事件传多个参数时 handler 签名必须对应（`thCursor(col,e)` 写成
     `(e)` 会拿字符串当事件，静默抛错）。
-13. **.gitignore 无斜杠模式匹配任意层级**：`guanlan` 意在排除根目录构建产物，
+13. **移动端 tooltip 生命周期**：触摸端 ECharts 不派发 globalout，浮窗会一直
+    挂着；且"数据刷新恢复"机制会把触摸浮窗不断顶回来。方案：lastPos 只在
+    pointerType==='mouse' 时记录；canvas 的 pointerup/pointercancel（非鼠标）
+    与图表外 pointerdown 立即 hideTip。注意 headless 里 ECharts tooltip 根本
+    不显示（新旧版本皆然，真机正常）——tooltip 类改动只能真机验证，headless
+    断言会全部假阴性。
+14. **.gitignore 无斜杠模式匹配任意层级**：`guanlan` 意在排除根目录构建产物，
     却把 `pkg/guanlan/`、`server/cmd/guanlan/` 整目录忽略——源文件静默缺失。
     排除根级产物用 `/guanlan` 锚定；仓库完整性用 `git ls-files` 对比磁盘核查。
 
