@@ -9,6 +9,7 @@ import { useColResize } from '../colresize'
 const { t, locale } = useI18n()
 const HCOLS = [{ key: 'dev', w: 100 }, { key: 'io', w: 110 }, { key: 'r', w: 100 }, { key: 'w', w: 100 }, { key: 'temp', w: 90 }, { key: 'ioerr', w: 80 }, { key: 'state', w: 110 }]
 const { widths: hcw, thResize: hcR, thCursor: hcCursor } = useColResize('diskHealth', Object.fromEntries(HCOLS.map((c) => [c.key, c.w])))
+const diskMinW = HCOLS.reduce((a, c) => a + c.w, 0) - HCOLS[HCOLS.length - 1].w + 140
 const latest = ref(null)
 const rows = ref([])
 let stop = null
@@ -112,7 +113,7 @@ const mountRows = computed(() => {
 
     <section class="panel">
       <h3>{{ t('disk.health') }}</h3>
-      <table>
+      <table :style="{ minWidth: diskMinW + 'px' }">
         <colgroup>
           <col v-for="c in HCOLS.slice(0, -1)" :key="c.key" :style="{ width: (hcw[c.key] || c.w) + 'px' }" />
           <col />

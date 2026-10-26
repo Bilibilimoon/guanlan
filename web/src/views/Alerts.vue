@@ -52,6 +52,7 @@ const HCOLS = [
   { key: 'value', w: 90 }, { key: 'level', w: 90 },
 ]
 const { widths: hw, thResize: hResize, thCursor: hCursor } = useColResize('alertHist', Object.fromEntries(HCOLS.map((c) => [c.key, c.w])))
+const histMinW = HCOLS.reduce((a, c) => a + c.w, 0) - HCOLS[HCOLS.length - 1].w + 140
 
 function fmtTime(ts) {
   if (!ts) return '-'
@@ -104,7 +105,7 @@ function fmtTime(ts) {
 
     <section class="panel">
       <h3>{{ t('alert.history') }}</h3>
-      <table>
+      <table :style="{ minWidth: histMinW + 'px' }">
         <colgroup>
           <col v-for="c in HCOLS.slice(0, -1)" :key="c.key" :style="{ width: (hw[c.key] || c.w) + 'px' }" />
           <col /><!-- 末列自适应剩余空间 -->

@@ -8,6 +8,8 @@ import { useColResize } from '../colresize'
 
 const { t, locale } = useI18n()
 const NCOLS = [{ key: 'iface', w: 150 }, { key: 'rx', w: 110 }, { key: 'tx', w: 110 }, { key: 'IPv4', w: 140 }, { key: 'IPv6', w: 420 }]
+// 窄屏（手机竖屏）不压缩列：保持最小总宽，容器横向滚动
+const netMinW = NCOLS.reduce((a, c) => a + c.w, 0)
 const { widths: ncw, thResize: ncR, thCursor: ncCursor } = useColResize('netIf', Object.fromEntries(NCOLS.map((c) => [c.key, c.w])))
 const latest = ref(null)
 const meta = ref(null)
@@ -100,8 +102,17 @@ const ifaceRows = computed(() => {
     </section>
     <section class="panel">
       <h3>{{ t('net.ifaces') }}</h3>
-      <table>
-        <thead><tr><th>{{ t('net.iface') }}</th><th>↓</th><th>↑</th><th>IPv4</th><th>IPv6</th></tr></thead>
+      <table :style="{ minWidth: netMinW + 'px' }">
+        <colgroup>
+          <col v-for="c in NCOLS.slice(0, -1)" :key="c.key" :style="{ width: (ncw[c.key] || c.w) + 'px' }" />
+          <col />
+        </colgroup>
+        <thead><tr>
+          <th v-for="c in NCOLS" :key="c.key" @mousemove="ncCursor(c.key, $event)" @pointerdown="ncR(c.key, $event)">
+            {{ c.key === 'iface' ? t('net.iface') : c.key === 'rx' ? '↓' : c.key === 'tx' ? '↑' : c.key }}
+            <span class="colgrip"></span>
+          </th>
+        </tr></thead>
         <tbody>
           <tr v-for="r in ifaceRows" :key="r.ifc">
             <td class="mono">{{ r.ifc }}</td>
@@ -124,7 +135,7 @@ const ifaceRows = computed(() => {
 .ctrl-label { color: var(--muted); font-size: 12px; }
 .rbtn { background: none; border: 1px solid transparent; color: var(--muted); border-radius: 6px; padding: 3px 10px; cursor: pointer; font-size: 12px; }
 .rbtn.active { color: var(--text); background: var(--bg); border-color: var(--border); }
-.panel { margin-top: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.panel { margin-top: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; overflow-x: auto; }
 .panel h3 { margin: 2px 0 8px; font-size: 13px; color: var(--muted); font-weight: 500; }
 table { border-collapse: collapse; font-size: 13px; table-layout: fixed; width: 100%; }
 th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 10px 4px 0; position: relative; white-space: nowrap; }

@@ -57,6 +57,8 @@ const COLS = [
   { key: 'cmd', w: 520 },
 ]
 const { widths, thResize, thCursor } = useColResize('procs', Object.fromEntries(COLS.map((c) => [c.key, c.w])))
+// 窄屏不压缩列：最小总宽（末列保底 260px），容器横向滚动
+const procMinW = COLS.reduce((a, c) => a + c.w, 0) - COLS[COLS.length - 1].w + 260
 
 function setSort(k) {
   if (sortKey.value === k) sortDesc.value = !sortDesc.value
@@ -80,7 +82,7 @@ const zh = computed(() => locale.value)
       </select>
     </div>
     <section class="panel">
-      <table>
+      <table :style="{ minWidth: procMinW + 'px' }">
         <colgroup>
           <col v-for="c in COLS.slice(0, -1)" :key="c.key" :style="{ width: (widths[c.key] || c.w) + 'px' }" />
           <col /><!-- 末列自适应剩余空间 -->
