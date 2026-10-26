@@ -9,17 +9,21 @@ const { t, locale } = useI18n()
 const C = { blue: '#2f81f7', green: '#3fb950', purple: '#bc8cff', orange: '#d29922', red: '#f85149', cyan: '#39c5cf', pink: '#ff7b72', lime: '#7ee787' }
 const COLORS = [C.blue, C.green, C.orange, C.purple, C.cyan, C.red, C.lime, C.pink]
 
-// 两套窗口档：温度/网络/磁盘跟概览（win.*）一致，看实时到一天内的细节；
-// 占用/功耗/负载/风扇用长窗口（hist.r*），长历史在这里才有意义
+// 两套窗口档：温度/网络/磁盘 = 概览的细档 + 历史页的长档（10秒~1年）；
+// 占用/功耗/负载/风扇 = 只有长档（细档在这几项上看不出东西）。
+// 1小时、24小时与长档的 1小时、1天是同一时段，只保留一个按钮
 const FINE_RANGES = [
   { sec: 10, ns: 'win', key: 's10' },
   { sec: 30, ns: 'win', key: 's30' },
   { sec: 60, ns: 'win', key: 'm1' },
   { sec: 300, ns: 'win', key: 'm5' },
   { sec: 900, ns: 'win', key: 'm15' },
-  { sec: 3600, ns: 'win', key: 'h1' },
+  { sec: 3600, ns: 'hist', key: 'r1h' },
   { sec: 21600, ns: 'win', key: 'h6' },
-  { sec: 86400, ns: 'win', key: 'h24' },
+  { sec: 86400, ns: 'hist', key: 'r1d' },
+  { sec: 7 * 86400, ns: 'hist', key: 'r1w' },
+  { sec: 30 * 86400, ns: 'hist', key: 'r1M' },
+  { sec: 365 * 86400, ns: 'hist', key: 'r1y' },
 ]
 const COARSE_RANGES = [
   { sec: 600, ns: 'hist', key: 'r10m' },
@@ -216,7 +220,7 @@ onMounted(() => setRange(rangeSec.value))
   background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
 }
 .seg {
-  display: inline-flex; gap: 2px; padding: 2px;
+  display: inline-flex; flex-wrap: wrap; max-width: 100%; gap: 2px; padding: 2px;
   background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
 }
 .segb {
