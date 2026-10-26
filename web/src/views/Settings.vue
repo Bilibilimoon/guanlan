@@ -15,6 +15,7 @@ const DB_CHOICES = [5, 10, 15, 30, 60]
 onMounted(async () => {
   try { cfg.value = await getJSON('api/config') } catch (e) { /* 忽略 */ }
   try { meta.value = await getJSON('api/meta') } catch (e) { /* 忽略 */ }
+  if (cfg.value?.authUser) authUser.value = cfg.value.authUser
 })
 
 async function save(patch) {
@@ -30,6 +31,25 @@ function setDb(v) { save({ dbIntervalMs: v * 1000 }) }
 function setRetain(k, v) {
   const rd = { ...cfg.value.retainDays, [k]: v }
   save({ retainDays: rd })
+}
+
+// 远程访问登录（TCP 直连端口的 HTTP Basic 认证）
+const authUser = ref('admin')
+const authPass = ref('')
+async function saveAuth() {
+  if (authPass.value.length < 4) return
+  await save({ authEnabled: true, authUser: authUser.value.trim() || 'admin', authPass: authPass.value })
+  authPass.value = ''
+}
+async function disableAuth() {
+  await save({ authEnabled: false })
+  authPass.value = ''
+}
+
+// 磁盘空间保护：剩余空间低于阈值时暂停历史落盘
+function setDiskMin(v) {
+  const n = Number.isFinite(v) ? Math.max(0, Math.min(100000, v)) : 0
+  save({ diskMinGb: n })
 }
 function setLang(v) {
   locale.value = v
@@ -229,6 +249,50 @@ async function doClear() {
     </section>
 
     <section class="panel">
+      <h3>{{ t('set.auth') }}</h3>
+      <div class="row">
+        <label>{{ t('set.authStatus') }}</label>
+        <b :class="cfg.authEnabled ? 'ok' : 'off'">
+          {{ cfg.authEnabled ? t('set.authOn') : t('set.authOff') }}
+        </b>
+      </div>
+      <div class="row">
+        <label>{{ t('set.authUser') }}</label>
+        <input class="txt" maxlength="32" :value="authUser" @input="authUser = $event.target.value" />
+      </div>
+      <div class="row">
+        <label>{{ t('set.authPass') }}</label>
+        <input class="txt" type="password" maxlength="128" :value="authPass"
+          :placeholder="cfg.authEnabled ? t('set.authPassKeep') : ''"
+          @input="authPass = $event.target.value" />
+      </div>
+      <div class="row">
+        <button class="btn" :disabled="authPass.length < 4" @click="saveAuth">
+          {{ cfg.authEnabled ? t('set.authUpdate') : t('set.authEnable') }}
+        </button>
+        <button v-if="cfg.authEnabled" class="btn ghost" @click="disableAuth">{{ t('set.authDisable') }}</button>
+        <span v-if="saved" class="ok">{{ saved }}</span>
+      </div>
+      <p class="hint">{{ t('set.authHint') }}</p>
+    </section>
+
+    <section class="panel">
+      <h3>{{ t('set.diskGuard') }}</h3>
+      <div class="row">
+        <label>{{ t('set.diskMin') }}</label>
+        <input type="number" min="0" max="100000" step="0.5" class="num" :value="cfg.diskMinGb"
+          @change="setDiskMin(parseFloat($event.target.value) || 0)" />
+        <span class="unit">GB</span>
+      </div>
+      <div class="row">
+        <label>{{ t('set.diskFree') }}</label>
+        <b>{{ typeof cfg.diskFreeGb === 'number' && cfg.diskFreeGb >= 0 ? cfg.diskFreeGb.toFixed(1) + ' GB' : '—' }}</b>
+        <span v-if="cfg.diskPaused" class="warn">{{ t('set.diskPaused') }}</span>
+      </div>
+      <p class="hint">{{ t('set.diskHint') }}</p>
+    </section>
+
+    <section class="panel">
       <h3>{{ t('set.storage') }}</h3>
       <template v-if="storage">
         <div class="row"><label>{{ t('set.dbSize') }}</label><b>{{ fmtBytes(storage.dbBytes || 0) }}</b></div>
@@ -319,8 +383,13 @@ async function doClear() {
 .unit { color: var(--muted); margin-left: -6px; }
 .sel { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px; font-size: 13px; cursor: pointer; }
 .num { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; width: 90px; font-size: 13px; }
+.txt { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; width: 200px; font-size: 13px; }
 .btn { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 14px; font-size: 13px; cursor: pointer; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.ghost { color: var(--muted); }
 .ok { color: var(--green); font-size: 12px; }
+.off { color: var(--muted); font-size: 12px; }
+.warn { color: var(--red); font-size: 12px; }
 .hint { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
 .mono { font-family: ui-monospace, Consolas, monospace; }
 .danger-zone { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border); }

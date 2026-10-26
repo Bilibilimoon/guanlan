@@ -15,6 +15,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"guanlan/server/internal/alert"
 	"guanlan/server/internal/collect"
@@ -33,6 +35,8 @@ type Options struct {
 	Alert *alert.Evaluator
 	// DbPath SQLite 路径（meta 里报库大小用）
 	DbPath string
+	// Disk 磁盘空间守卫（可空：不做阈值保护）
+	Disk *store.DiskGuard
 }
 
 type Server struct {
@@ -40,10 +44,13 @@ type Server struct {
 	st  *store.Store
 	opt Options
 	pub *publicIPProber
+
+	authMu    sync.Mutex
+	authCache map[[32]byte]time.Time
 }
 
 func New(col *collect.Collector, st *store.Store, opt Options) http.Handler {
-	s := &Server{col: col, st: st, opt: opt, pub: newPublicIPProber()}
+	s := &Server{col: col, st: st, opt: opt, pub: newPublicIPProber(), authCache: map[[32]byte]time.Time{}}
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/api/healthz", s.healthz)
@@ -81,7 +88,7 @@ func New(col *collect.Collector, st *store.Store, opt Options) http.Handler {
 		fileServer.ServeHTTP(w, r2)
 	})
 
-	return s.gzip(mux)
+	return securityHeaders(s.authTCP(s.gzip(mux)))
 }
 
 // gate 管理员校验中间件（写接口）：生产模式仅放行网关注入 X-Trim-Isadmin: true。
@@ -163,14 +170,24 @@ func writeJSON(w http.ResponseWriter, v any) {
 func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		rd := s.retainDays()
-		writeJSON(w, map[string]any{
+		authUser, _, _, authOn := s.authConfigured()
+		out := map[string]any{
 			"intervalMs":    s.col.Interval().Milliseconds(),
 			"dbIntervalMs":  s.dbIntervalMs(),
 			"minIntervalMs": 100,
 			"maxIntervalMs": 15000,
 			"dbChoicesMs":   []int64{5000, 10000, 15000, 30000, 60000},
 			"retainDays":    rd,
-		})
+			"authEnabled":   authOn,
+			"authUser":      authUser,
+		}
+		if s.opt.Disk != nil {
+			ds := s.opt.Disk.Status()
+			out["diskMinGb"] = ds["minGb"]
+			out["diskFreeGb"] = ds["freeGb"]
+			out["diskPaused"] = ds["paused"]
+		}
+		writeJSON(w, out)
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -190,8 +207,12 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 			L1 int `json:"l1"`
 			L2 int `json:"l2"`
 		} `json:"retainDays"`
+		AuthEnabled *bool    `json:"authEnabled"`
+		AuthUser    *string  `json:"authUser"`
+		AuthPass    *string  `json:"authPass"`
+		DiskMinGb   *float64 `json:"diskMinGb"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 512)).Decode(&req); err != nil {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 2048)).Decode(&req); err != nil {
 		http.Error(w, `{"error":"bad_json"}`, http.StatusBadRequest)
 		return
 	}
@@ -237,11 +258,58 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	writeJSON(w, map[string]any{
+	if req.AuthEnabled != nil {
+		if *req.AuthEnabled {
+			user := "admin"
+			if req.AuthUser != nil && strings.TrimSpace(*req.AuthUser) != "" {
+				user = strings.TrimSpace(*req.AuthUser)
+			}
+			pass := ""
+			if req.AuthPass != nil {
+				pass = *req.AuthPass
+			}
+			if len(user) > 32 || len(pass) < 4 || len(pass) > 128 {
+				http.Error(w, `{"error":"auth_credentials_invalid"}`, http.StatusBadRequest)
+				return
+			}
+			if err := s.setAuth(user, pass); err != nil {
+				http.Error(w, `{"error":"save_failed"}`, http.StatusInternalServerError)
+				return
+			}
+		} else if err := s.clearAuth(); err != nil {
+			http.Error(w, `{"error":"save_failed"}`, http.StatusInternalServerError)
+			return
+		}
+	}
+	if req.DiskMinGb != nil {
+		v := *req.DiskMinGb
+		if v < 0 || v > 100000 {
+			http.Error(w, `{"error":"disk_min_invalid"}`, http.StatusBadRequest)
+			return
+		}
+		if err := s.st.SetMeta("disk_min_gb", strconv.FormatFloat(v, 'f', 1, 64)); err != nil {
+			http.Error(w, `{"error":"save_failed"}`, http.StatusInternalServerError)
+			return
+		}
+		if s.opt.Disk != nil {
+			s.opt.Disk.Invalidate()
+		}
+	}
+	authUser, _, _, authOn := s.authConfigured()
+	out := map[string]any{
 		"intervalMs":   s.col.Interval().Milliseconds(),
 		"dbIntervalMs": s.dbIntervalMs(),
 		"retainDays":   s.retainDays(),
-	})
+		"authEnabled":  authOn,
+		"authUser":     authUser,
+	}
+	if s.opt.Disk != nil {
+		ds := s.opt.Disk.Status()
+		out["diskMinGb"] = ds["minGb"]
+		out["diskFreeGb"] = ds["freeGb"]
+		out["diskPaused"] = ds["paused"]
+	}
+	writeJSON(w, out)
 }
 
 func (s *Server) retainDays() map[string]int {
@@ -316,7 +384,7 @@ func (s *Server) series(w http.ResponseWriter, r *http.Request) {
 func (s *Server) meta(w http.ResponseWriter, r *http.Request) {
 	latest := s.col.Latest()
 	pubV4, pubV6, pubChecked := s.pub.snapshot()
-	writeJSON(w, map[string]any{
+	out := map[string]any{
 		"version":         s.opt.Version,
 		"ifaces":          s.col.Ifaces(),
 		"disks":           keysDisk(latest),
@@ -327,7 +395,11 @@ func (s *Server) meta(w http.ResponseWriter, r *http.Request) {
 		"publicIPv6":      pubV6,
 		"publicCheckedAt": pubChecked.Unix(),
 		"storage":         s.st.Stats(s.opt.DbPath),
-	})
+	}
+	if s.opt.Disk != nil {
+		out["disk"] = s.opt.Disk.Status()
+	}
+	writeJSON(w, out)
 }
 
 func keysDisk(sm collect.Sample) []string {

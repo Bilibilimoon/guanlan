@@ -21,7 +21,7 @@ const props = defineProps({
   resetKey: { type: Number, default: 0 },
 })
 
-const emit = defineEmits(['viewchange'])
+const emit = defineEmits(['viewchange', 'zoombeyond'])
 
 const el = ref(null)
 let chart = null
@@ -66,7 +66,10 @@ function render() {
   const spanSec = isFinite(mn) ? mx - mn : 0
 
   chart.setOption({
-    animation: false,
+    // 只有可缩放的历史图开动画：缩放时 160ms 过渡更"跟手"，实时图保持关闭避免抖动
+    animation: props.zoom,
+    animationDurationUpdate: 160,
+    animationEasingUpdate: 'cubicOut',
     backgroundColor: 'transparent',
     tooltip: {
       trigger: 'axis',
@@ -172,8 +175,16 @@ function onWheelZoom(e) {
   const pMouse = ((tSec - mn) / (mx - mn)) * 100 // 鼠标处的时间占全数据范围的百分比
   const rel = p1 > p0 ? Math.min(1, Math.max(0, (pMouse - p0) / (p1 - p0))) : 0.5 // 在视窗中的相对位置
 
-  const step = e.deltaY > 0 ? 1.2 : 1 / 1.2
-  const span = Math.min(100, Math.max(0.1, (p1 - p0) * step))
+  // 缩放比例按 deltaY 连续计算（鼠标一格 ≈ 100 → 约 1.16 倍），触控板小步长也顺滑
+  const factor = Math.min(2, Math.max(0.5, Math.pow(1.0015, e.deltaY)))
+  const curSpan = p1 - p0
+  // 已经缩到全量还继续往外滚：交给上层切到更大的时间窗口（分页式加载）
+  if (e.deltaY > 0 && curSpan >= 99.5) {
+    e.preventDefault()
+    emit('zoombeyond')
+    return
+  }
+  const span = Math.min(100, Math.max(0.1, curSpan * factor))
   let ns = pMouse - rel * span
   let ne = ns + span
   if (ns < 0) { ns = 0; ne = span }

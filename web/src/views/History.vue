@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import LiveChart from '../components/LiveChart.vue'
 import { getJSON } from '../api'
@@ -60,6 +60,34 @@ const metaRef = ref(null)
 const groupDef = computed(() => GROUPS.find((g) => g.id === group.value))
 const ranges = computed(() => (groupDef.value.fine ? FINE_RANGES : COARSE_RANGES))
 const rangeSec = computed(() => (groupDef.value.fine ? fineSec.value : coarseSec.value))
+
+// 滚轮缩放后把可视跨度吸附到最近档位（时间尺度上等比，所以用对数距离）
+function nearestSec(span) {
+  const list = ranges.value
+  let best = list[0].sec
+  let bestD = Infinity
+  for (const r of list) {
+    const d = Math.abs(Math.log(r.sec / Math.max(span, 1)))
+    if (d < bestD) { bestD = d; best = r.sec }
+  }
+  return best
+}
+// 只改档位显示（下拉框），不重新取数
+function setCurrentSec(sec) {
+  if (groupDef.value.fine) fineSec.value = sec
+  else coarseSec.value = sec
+}
+
+// 磁盘空间保护状态（meta 里 disk.paused）
+const diskPaused = computed(() => metaRef.value?.disk?.paused === true)
+const diskFree = computed(() => {
+  const v = metaRef.value?.disk?.freeGb
+  return typeof v === 'number' && v >= 0 ? v.toFixed(1) : '—'
+})
+const diskMin = computed(() => {
+  const v = metaRef.value?.disk?.minGb
+  return typeof v === 'number' ? v.toFixed(1) : '0'
+})
 
 // 组内指标清单：固定列表或按前缀从已知指标里取
 function metricsOf() {
@@ -143,8 +171,9 @@ function switchGroup(id) {
   setRange(rangeSec.value)
 }
 
-// 滚轮缩放：按可视跨度动态换层（换层后保留可视窗口）
+// 滚轮缩放：吸附档位 + 按可视跨度动态换层（换层后保留可视窗口）
 let zoomTimer = null
+let metaTimer = null
 function onViewChange(v) {
   if (!v) return
   clearTimeout(zoomTimer)
@@ -154,6 +183,8 @@ function onViewChange(v) {
     const e = v.endSec
     const span = e - s
     if (!isFinite(s) || !isFinite(e) || span <= 0) return
+    // 下拉框跟着滚轮走：显示离可视跨度最近的档位（只改显示，不重新取数）
+    setCurrentSec(nearestSec(span))
     const now = Date.now() / 1000
     const want = span <= 2 * 86400 && s > now - 30 * 86400 ? 'l0'
       : span <= 180 * 86400 && s > now - 180 * 86400 ? 'l1'
@@ -163,7 +194,19 @@ function onViewChange(v) {
       const pad = Math.max(span * 0.2, 60)
       loadWindow(s - pad, e + pad, want)
     }
-  }, 500)
+  }, 260)
+}
+
+// 缩小到当前档位全量后继续滚：自动切到下一档并加载（分页式，不打断锚点）
+let beyondAt = 0
+function onZoomBeyond() {
+  const now = Date.now()
+  if (now - beyondAt < 500) return
+  beyondAt = now
+  const list = ranges.value
+  const idx = list.findIndex((r) => r.sec === rangeSec.value)
+  if (idx < 0 || idx >= list.length - 1) return
+  setRange(list[idx + 1].sec)
 }
 
 async function loadWindow(start, end, lv) {
@@ -180,24 +223,33 @@ async function loadWindow(start, end, lv) {
     })
     series.value = out
     level.value = lv
-    // 换层后窗口档位跟着当前可视跨度走（对应那套档位表）
-    if (groupDef.value.fine) fineSec.value = Math.round(end - start)
-    else coarseSec.value = Math.round(end - start)
+    // 下拉框只能是档位里的值：按实际跨度吸附，避免出现"空白选中"
+    setCurrentSec(nearestSec(end - start))
   } finally {
     loading.value = false
   }
 }
 
-onMounted(() => setRange(rangeSec.value))
+onMounted(() => {
+  setRange(rangeSec.value)
+  // meta 定期刷新：磁盘空间保护状态变了要能及时提示
+  metaTimer = setInterval(async () => {
+    try { metaRef.value = await getJSON('api/meta') } catch (e) { /* 忽略 */ }
+  }, 60000)
+})
+onBeforeUnmount(() => {
+  if (metaTimer) clearInterval(metaTimer)
+  clearTimeout(zoomTimer)
+})
 </script>
 
 <template>
   <div class="hist">
     <div class="ctrl">
-      <div class="seg">
-        <button v-for="r in ranges" :key="r.sec" :class="['segb', { active: rangeSec === r.sec }]"
-          @click="setRange(r.sec)">{{ t(`${r.ns}.${r.key}`) }}</button>
-      </div>
+      <span class="ctrl-label">{{ t('ctrl.window') }}</span>
+      <select class="sel" :value="rangeSec" @change="setRange(parseInt($event.target.value, 10))">
+        <option v-for="r in ranges" :key="r.sec" :value="r.sec">{{ t(`${r.ns}.${r.key}`) }}</option>
+      </select>
       <div class="seg">
         <button v-for="g in GROUPS" :key="g.id" :class="['segb', { active: group === g.id }]"
           @click="switchGroup(g.id)">{{ t(`hist.group.${g.id}`) }}</button>
@@ -205,9 +257,12 @@ onMounted(() => setRange(rangeSec.value))
       <span class="ctrl-label">{{ levelTip }}</span>
       <span v-if="loading" class="ctrl-label">…</span>
     </div>
+    <p v-if="diskPaused" class="diskbar">
+      {{ t('hist.diskPaused', { free: diskFree, min: diskMin }) }}
+    </p>
     <section class="panel">
       <LiveChart :series="series" :y-type="groupDef.yType" height="62vh" :zoom="true" :reset-key="resetKey"
-        @viewchange="onViewChange" />
+        @viewchange="onViewChange" @zoombeyond="onZoomBeyond" />
     </section>
     <p class="hint">{{ t('hist.hint') }}</p>
   </div>
@@ -222,6 +277,14 @@ onMounted(() => setRange(rangeSec.value))
 .seg {
   display: inline-flex; flex-wrap: wrap; max-width: 100%; gap: 2px; padding: 2px;
   background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+}
+.sel {
+  background: var(--bg); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 3px 8px; font-size: 12px; cursor: pointer;
+}
+.diskbar {
+  margin: 10px 0 0; padding: 8px 12px; font-size: 12px; color: var(--red);
+  background: rgba(248, 81, 73, 0.12); border: 1px solid var(--red); border-radius: 8px;
 }
 .segb {
   background: none; border: none; color: var(--muted);

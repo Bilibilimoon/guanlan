@@ -19,7 +19,7 @@ import (
 	"guanlan/server/internal/store"
 )
 
-var appVersion = "0.5.14"
+var appVersion = "0.5.15"
 
 func main() {
 	var (
@@ -46,11 +46,15 @@ func main() {
 	os.MkdirAll(*dataDir, 0o755)
 
 	// 采集/落盘间隔：持久化在库 meta 里，运行时可经 /api/config 调整
-	st, err := store.Open(filepath.Join(*dataDir, "guanlan.db"))
+	dbPath := filepath.Join(*dataDir, "guanlan.db")
+	st, err := store.Open(dbPath)
 	if err != nil {
 		log.Fatalf("打开数据库失败: %v", err)
 	}
 	defer st.Close()
+
+	// 磁盘空间守卫：剩余空间低于设置阈值时暂停历史落盘（采集与实时曲线照常）
+	guard := store.NewDiskGuard(st, *dataDir)
 
 	interval := 2 * time.Second
 	if v, ok := st.GetMeta("interval_ms"); ok {
@@ -76,6 +80,9 @@ func main() {
 		for {
 			time.Sleep(time.Duration(dbDyn.Load()) * time.Millisecond)
 			if sm := col.Latest(); sm.T > 0 {
+				if !guard.Allow() {
+					continue // 磁盘剩余不足：本次不落盘，等空间恢复
+				}
 				if err := st.WriteSample(sm); err != nil {
 					log.Printf("落盘失败: %v", err)
 				}
@@ -115,7 +122,8 @@ func main() {
 		Dev:     *dev,
 		Version: appVersion,
 		Alert:   alertEval,
-		DbPath:  filepath.Join(*dataDir, "guanlan.db"),
+		DbPath:  dbPath,
+		Disk:    guard,
 		SetConfig: func(intervalMs, dbMs int64) error {
 			if intervalMs > 0 {
 				col.SetInterval(time.Duration(intervalMs) * time.Millisecond)
