@@ -3,10 +3,10 @@ import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import LiveChart from '../components/LiveChart.vue'
 import { getJSON, poll } from '../api'
-import { fmtBps, fmtDur } from '../fmt'
+import { fmtBps } from '../fmt'
 import { useColResize } from '../colresize'
 
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const NCOLS = [{ key: 'iface', w: 150 }, { key: 'rx', w: 110 }, { key: 'tx', w: 110 }, { key: 'IPv4', w: 140 }, { key: 'IPv6', w: 420 }]
 // 窄屏（手机竖屏）不压缩列：保持最小总宽，容器横向滚动
 const netMinW = NCOLS.reduce((a, c) => a + c.w, 0)
@@ -17,8 +17,23 @@ const rows = ref([])
 let stop = null
 let stopMeta = null
 
-const WINDOWS = [900, 3600, 21600, 86400]
+// 与概览同一套窗口档（10秒~24小时）
+const WINDOWS = [
+  { sec: 10, key: 's10' },
+  { sec: 30, key: 's30' },
+  { sec: 60, key: 'm1' },
+  { sec: 300, key: 'm5' },
+  { sec: 900, key: 'm15' },
+  { sec: 3600, key: 'h1' },
+  { sec: 21600, key: 'h6' },
+  { sec: 86400, key: 'h24' },
+]
 const winSec = ref(900)
+
+function setWin(v) {
+  winSec.value = v
+  reload()
+}
 
 async function reload() {
   try {
@@ -94,8 +109,9 @@ const ifaceRows = computed(() => {
   <div>
     <div class="ctrl">
       <span class="ctrl-label">{{ t('ctrl.window') }}</span>
-      <button v-for="w in WINDOWS" :key="w" :class="['rbtn', { active: winSec === w }]"
-        @click="winSec = w; reload()">{{ fmtDur(w, locale) }}</button>
+      <select class="sel" :value="winSec" @change="setWin(parseInt($event.target.value, 10))">
+        <option v-for="w in WINDOWS" :key="w.sec" :value="w.sec">{{ t(`win.${w.key}`) }}</option>
+      </select>
     </div>
     <section class="panel">
       <LiveChart :series="series" y-type="bytes" height="42vh" />
@@ -133,8 +149,7 @@ const ifaceRows = computed(() => {
 <style scoped>
 .ctrl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 14px; padding: 8px 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
 .ctrl-label { color: var(--muted); font-size: 12px; }
-.rbtn { background: none; border: 1px solid transparent; color: var(--muted); border-radius: 6px; padding: 3px 10px; cursor: pointer; font-size: 12px; }
-.rbtn.active { color: var(--text); background: var(--bg); border-color: var(--border); }
+.sel { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; font-size: 12px; cursor: pointer; }
 .panel { margin-top: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; overflow-x: auto; }
 .panel h3 { margin: 2px 0 8px; font-size: 13px; color: var(--muted); font-weight: 500; }
 table { border-collapse: collapse; font-size: 13px; table-layout: fixed; width: 100%; }
