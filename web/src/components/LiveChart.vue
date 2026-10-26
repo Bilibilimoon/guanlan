@@ -107,7 +107,8 @@ function render() {
     },
     yAxis: yAxisOpt(),
     dataZoom: props.zoom
-      ? [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true, moveOnMouseWheel: true, filterMode: 'none' }]
+      // 滚轮缩放由下面的自定义 wheel 处理（内置的以视图中心为锚点，不跟手）
+      ? [{ type: 'inside', zoomOnMouseWheel: false, moveOnMouseWheel: false, moveOnMouseMove: true, zoomOnPinch: true, filterMode: 'none' }]
       : undefined,
     series: props.series.map((s) => ({
       name: s.name,
@@ -130,6 +131,55 @@ function render() {
       chart && chart.dispatchAction({ type: 'showTip', x: pos.x, y: pos.y })
     })
   }
+}
+
+// 数据时间范围（秒）：dataZoom 的百分比即相对这个范围
+function dataRangeSec() {
+  let mn = Infinity
+  let mx = -Infinity
+  for (const ser of props.series) {
+    for (const p of ser.points) {
+      if (p[0] < mn) mn = p[0]
+      if (p[0] > mx) mx = p[0]
+    }
+  }
+  return [mn, mx]
+}
+
+// 滚轮缩放：以鼠标所在时间为锚点缩放（内置 inside 没有这个选项）。
+// 做法：换算鼠标处的数据时间 → 保持它在视窗中的相对位置不变 → 反推新的 start/end 百分比。
+function onWheelZoom(e) {
+  if (!props.zoom || !chart) return
+  const dzArr = chart.getOption().dataZoom
+  if (!dzArr || !dzArr[0]) return
+  const [mn, mx] = dataRangeSec()
+  if (!isFinite(mn) || mx <= mn) return
+  const elRef = el.value
+  if (!elRef) return
+
+  const rect = elRef.getBoundingClientRect()
+  const px = e.clientX - rect.left
+  const p0 = isFinite(dzArr[0].start) ? dzArr[0].start : 0
+  const p1 = isFinite(dzArr[0].end) ? dzArr[0].end : 100
+
+  // 坐标轴 finder 返回单值（time 轴为毫秒）；series finder 才返回数组，两种都兼容
+  const conv = chart.convertFromPixel({ xAxisIndex: 0 }, px)
+  const tMs = typeof conv === 'number' ? conv : Array.isArray(conv) ? conv[0] : NaN
+  if (!isFinite(tMs)) return
+  let tSec = tMs / 1000
+  tSec = Math.min(mx, Math.max(mn, tSec))
+
+  const pMouse = ((tSec - mn) / (mx - mn)) * 100 // 鼠标处的时间占全数据范围的百分比
+  const rel = p1 > p0 ? Math.min(1, Math.max(0, (pMouse - p0) / (p1 - p0))) : 0.5 // 在视窗中的相对位置
+
+  const step = e.deltaY > 0 ? 1.2 : 1 / 1.2
+  const span = Math.min(100, Math.max(0.1, (p1 - p0) * step))
+  let ns = pMouse - rel * span
+  let ne = ns + span
+  if (ns < 0) { ns = 0; ne = span }
+  if (ne > 100) { ne = 100; ns = 100 - span }
+  e.preventDefault() // 确认要缩放才拦截，避免鼠标在图表边缘时白吞页面滚动
+  chart.dispatchAction({ type: 'dataZoom', start: ns, end: ne })
 }
 
 function bindHover() {
@@ -156,6 +206,8 @@ function bindHover() {
   window.addEventListener('pointerdown', roOutside, true)
 
   if (props.zoom) {
+    // capture 阶段：zrender 在 canvas 上接管 wheel 并阻断冒泡，冒泡阶段收不到
+    elRef.addEventListener('wheel', onWheelZoom, { passive: false, capture: true })
     chart.on('dataZoom', () => {
       const dz = chart.getOption().dataZoom
       if (!dz || !dz[0]) return
@@ -205,6 +257,7 @@ onMounted(() => {
 watch(() => props.series, render, { deep: false })
 
 onBeforeUnmount(() => {
+  if (el.value) el.value.removeEventListener('wheel', onWheelZoom, { capture: true })
   if (roOutside) window.removeEventListener('pointerdown', roOutside, true)
   if (ro) ro.disconnect()
   if (chart) { chart.dispose(); chart = null }

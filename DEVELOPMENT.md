@@ -203,7 +203,14 @@ Vue3 + Vite + vue-i18n + ECharts 按需（gzip ~210KB）。页面懒加载分 ch
     `DataZoomInsideComponent` 时，`dataZoom: [{type:'inside', zoomOnMouseWheel:true}]`
     不报任何错但完全不生效——滚轮在有 tooltip 的图表上翻不动时间轴（v0.5.9 用户
     反馈）。按需引入下"配置合法但交互缺失"是静默失败，改交互务必真机/浏览器验证。
-18. **滚轮缩放的三个连带坑**：a) `chart.getOption().dataZoom[0]` 在百分比驱动下
+18. **ECharts inside 缩放不以鼠标为中心**：内置数据缩放固定以视图中心为锚点，没有
+    "以鼠标为中心"的选项（v0.5.10 用户反馈）。只能关掉 `zoomOnMouseWheel` 自己接管
+    wheel：用 `convertFromPixel` 取鼠标处时间，保持它在视窗中的相对位置不变，反推
+    `dispatchAction({type:'dataZoom', start, end})`。两个实现坑：a) **zrender 在 canvas
+    上接管 wheel 并在冒泡阶段吞掉事件**，监听必须用 `{ capture: true }` 绑在容器上；
+    b) `convertFromPixel({xAxisIndex:0}, px)` 返回**标量**（time 轴为毫秒），传数组或
+    按数组取值会拿到 NaN 静默失效。
+19. **滚轮缩放/切档的三个连带坑**：a) `chart.getOption().dataZoom[0]` 在百分比驱动下
     `startValue/endValue` 是空的，直接使用得到 NaN，会向下游发 `start=NaN`（后端
     400）——要用 start/end 百分比乘当前数据时间范围换算成秒；b) 切档位时的
     `dispatchAction({type:'dataZoom',start:0,end:100})` 会合成一次 dataZoom 事件，
@@ -229,3 +236,4 @@ Vue3 + Vite + vue-i18n + ECharts 按需（gzip ~210KB）。页面懒加载分 ch
 - 0.5.x 移动端打磨（列宽拖动/触摸 tooltip/窄屏横向滚动）、历史导出导入、三语
 - 0.5.9 功耗估算：概览卡片 + 历史曲线（本机无功率计，模型推算，标注 EST）
 - 0.5.10 历史页滚轮缩放修复（补注册 dataZoom inside）、缩放换层 NaN/竞态/合成事件
+- 0.5.11 滚轮缩放改为以鼠标位置为锚点（接管 wheel：convertFromPixel 反推 start/end）
