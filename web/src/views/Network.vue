@@ -124,7 +124,7 @@ const ifaceRows = computed(() => {
       </table>
       <p v-if="meta" class="ips">
         {{ t('net.public') }}：IPv4 <span class="mono">{{ meta.publicIPv4 || '-' }}</span>
-        ｜ IPv6 <span class="mono wrap">{{ meta.publicIPv6 || '-' }}</span>
+        ｜ IPv6 <span class="mono">{{ meta.publicIPv6 || '-' }}</span>
       </p>
     </section>
   </div>
@@ -144,5 +144,5 @@ th:hover .colgrip { background: rgba(47, 129, 247, 0.35); border-radius: 2px; }
 td { padding: 5px 10px 5px 0; border-top: 1px solid var(--border); vertical-align: top; }
 .mono { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
 .wrap { white-space: normal; word-break: break-all; max-width: 420px; }
-.ips { color: var(--muted); font-size: 12px; }
+.ips { color: var(--muted); font-size: 12px; margin: 8px 0 0; white-space: nowrap; width: max-content; }
 </style>
