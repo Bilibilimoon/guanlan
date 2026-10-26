@@ -1,6 +1,7 @@
 # 观澜（guanlan）开发记录（面向后续维护者 / AI）
 
-最后更新：2026-10-25，对应版本 **0.4.1**。发布渠道：GitHub Releases（tag 挂 `guanlan.fpk`）。
+最后更新：2026-10-26，对应版本 **0.5.16**。发布渠道：GitHub Releases（tag 挂 `guanlan.fpk`），
+完整变更列表见 [CHANGELOG.md](CHANGELOG.md)。
 
 这份文档记录「为什么这么做」和「踩过哪些坑」，README.md 只讲用户怎么装怎么用。
 接手前请先通读本文，再改代码。
@@ -10,7 +11,7 @@
 ## 1. 项目是什么
 
 飞牛 fnOS 系统监控应用「观澜」：实时总览 NAS 各项资源（CPU/内存/NPU/GPU/温度/风扇/
-网络/磁盘），分层存储历史曲线（10 分钟~1 年，滚轮缩放下钻），进程列表（只读），
+网络/磁盘），分层存储历史曲线（10 秒~1 年，滚轮缩放下钻），进程列表（只读），
 阈值告警与磁盘健康监视。**仅 fnOS 管理员可用。**
 
 单进程、自包含二进制（前端嵌入），不依赖 Node/Python/Docker/PHP。
@@ -20,7 +21,7 @@
 - 不结束进程（用户决策：纯只读，无特权身份下能力也极有限）
 - 不读 SMART 完整属性 / NPU·GPU 利用率百分比（需 root，见 §4.3）
 - 不做公网中继穿透（fnConnect 不转发第三方端口，平台限制）
-- TCP 端口只做局域网只读镜像，不做完整管理（见 §3）
+- TCP 端口只做局域网只读镜像（可选 Basic 登录），不做完整管理（见 §3）
 
 ## 2. 快速开始
 
@@ -30,7 +31,7 @@
 ./build.sh
 # 产物：pkg/guanlan/guanlan.fpk 与本机架构 ./guanlan
 
-# 单元测试（差分/存储/告警/鉴权共 17 例）
+# 单元测试（采集/存储/降采样/告警/鉴权/磁盘守卫共 32 例）
 cd server && go test ./...
 
 # 本机直跑开发实例（跳过管理员校验）
@@ -53,6 +54,39 @@ curl http://127.0.0.1:9780/api/realtime                                # TCP 只
 ```
 
 注意 `appcenter-cli start` 返回后 socket 未立即就绪，等 3~5 秒再 curl。
+
+### 目录结构
+
+```
+guanlan/
+├─ build.sh                # 一键构建（前端→嵌入→双架构→fpk）
+├─ guanlan                 # 构建产物：本机架构单二进制（gitignore）
+├─ pkg/guanlan/            # fpk 打包树：manifest、cmd/ 生命周期、ICON.PNG、app/server/
+├─ server/
+│  ├─ cmd/guanlan/main.go  # 入口：flag 解析、采集/落盘/降采样/告警 goroutine、双 listener
+│  └─ internal/
+│     ├─ collect/          # /proc /sys 采集 + 功耗估算模型（power.go）
+│     ├─ store/            # SQLite 分层时序（store.go）+ 磁盘空间守卫（diskguard.go）
+│     ├─ api/              # HTTP：路由/鉴权（auth.go）/meta/config/series…；embed dist
+│     └─ alert/            # 阈值规则评估（环形缓冲持续判定）
+├─ web/                    # Vue3 + Vite 前端源码（views/components/i18n/fmt）
+└─ tools/genicon/          # 图标生成（首次构建）
+```
+
+### 启动参数与环境变量
+
+| 参数 / 变量 | 含义 | 默认 |
+|---|---|---|
+| `-addr` | 开发模式 HTTP 监听地址 | `:9780` |
+| `-sock` | Unix socket 路径（fnOS 网关模式，优先于 -addr） | 空 |
+| `-port` | 可选 TCP 只读端口（fnOS 应用设置的 `port` 环境变量优先） | 0=不开 |
+| `-data` | 数据目录（SQLite + 日志），fnOS 下用 `TRIM_PKGVAR` | `./data` |
+| `-dev` | 跳过管理员校验（**仅本机调试**，生产必须 false） | false |
+| `TRIM_PKGVAR` | fnOS 注入：数据目录（`/vol1/@appdata/guanlan`） | — |
+| `TRIM_APPDEST` | fnOS 注入：安装目录（socket 所在处） | — |
+
+数据目录内容：`guanlan.db`（历史，WAL）、`guanlan.log`（运行日志，启动脚本 `>>` 追加）、
+`guanlan.pid`。卸载应用**不会删除**数据目录，重装后历史延续。
 
 ## 3. 运行时拓扑
 
@@ -77,6 +111,10 @@ curl http://127.0.0.1:9780/api/realtime                                # TCP 只
 | Unix socket + 管理员（`X-Trim-Isadmin: true`） | ✅ | ✅ |
 | Unix socket + 普通用户 | ❌ 403 | ❌ 403 |
 | TCP 直连（任何头都剥） | ✅ | ❌ 403 |
+| TCP 直连 + 已启用 Basic 登录 | ✅（需凭据，失败限速 5 次/60s） | ❌ 403 |
+
+另外所有响应带 `X-Content-Type-Options` / `Referrer-Policy` / `X-Frame-Options`；
+TCP 通道的 Basic 认证细节（缓存、限速、审计）见踩坑 22。
 
 ## 4. 关键架构决策
 
@@ -125,14 +163,18 @@ tcp4/tcp6 各走各的出口。ipw.cn 曾可用但 DNS 已失效，不要加回�
 ## 5. 数据与接口
 
 序列命名：`cpu / mem_pct / load1..15 / swap_used / fan / gpu_pct / npu_pct /
-temp.<zone|盘名> / net.<iface>.rx|tx / disk.<dev>.r|w / uptime`
+power_w / temp.<zone|盘名> / net.<iface>.rx|tx / disk.<dev>.r|w / uptime`
+（`power_w` 为估算值，见踩坑 15；导入校验只拒绝"文件里有本机不认识的序列"，
+反向宽松，允许升级后新增指标）。
 
 接口（除 healthz 全部需鉴权，见 §3 矩阵）：`/api/healthz realtime ring series
 meta config config/export config/import data/clear processes alerts alerts/rules
 alerts/ack`。写操作一律要求 `X-Requested-With: guanlan`（防跨站表单）。
+逐端点的参数与响应示例见 [docs/API.md](docs/API.md)。
 
-配置持久化在 SQLite `meta` 表（interval_ms/db_interval_ms/retain_*/alert_rules/
-ds_*_pos），运行时可改即时生效。`data/clear` 要求 `{"confirm":"CLEAR"}` 双保险。
+配置持久化在 SQLite `meta` 表（interval_ms / db_interval_ms / retain_l0..l2 /
+alert_rules / ds_l1_pos / ds_l2_pos / disk_min_gb / auth_user / auth_salt /
+auth_hash），运行时可改即时生效。`data/clear` 要求 `{"confirm":"CLEAR"}` 双保险。
 
 ## 6. 前端结构
 
@@ -178,9 +220,9 @@ Vue3 + Vite + vue-i18n + ECharts 按需（gzip ~210KB）。页面懒加载分 ch
 13. **移动端 tooltip 生命周期**：触摸端 ECharts 不派发 globalout，浮窗会一直
     挂着；且"数据刷新恢复"机制会把触摸浮窗不断顶回来。方案：lastPos 只在
     pointerType==='mouse' 时记录；canvas 的 pointerup/pointercancel（非鼠标）
-    与图表外 pointerdown 立即 hideTip。注意 headless 里 ECharts tooltip 根本
-    不显示（新旧版本皆然，真机正常）——tooltip 类改动只能真机验证，headless
-    断言会全部假阴性。
+    与图表外 pointerdown 立即 hideTip。headless 里 tooltip 的显示曾长期被认定
+    不可用（v0.5.11 实测其实可以：dispatchAction showTip 后能读到文本），但触摸
+    端行为 headless 无法模拟——触摸相关改动仍要真机复核。
 14. **.gitignore 无斜杠模式匹配任意层级**：`guanlan` 意在排除根目录构建产物，
     却把 `pkg/guanlan/`、`server/cmd/guanlan/` 整目录忽略——源文件静默缺失。
     排除根级产物用 `/guanlan` 锚定；仓库完整性用 `git ls-files` 对比磁盘核查。
@@ -224,6 +266,11 @@ Vue3 + Vite + vue-i18n + ECharts 按需（gzip ~210KB）。页面懒加载分 ch
     因此在 `loadWindow`（滚轮换层后回写窗口）里**不能**再写 `rangeSec.value`——必须先
     判组，写回对应那套的 ref，否则 Vue 直接报 "computed value is readonly"。
     档位变多后 `.seg` 必须加 `flex-wrap: wrap; max-width: 100%`，不然窄屏会横向溢出。
+21. **独立页（温度/网络/磁盘）的窗口档位走两条数据路径**（v0.5.14）：`winSec <= 900`
+    走 `/api/ring?sec=N`（实时环，1s 采样），更长的窗口走 `/api/series?level=l0`。
+    后端 `ring` 对 `sec > 900` 直接钳成 900，所以前端必须自己按 900 分界，不能只把
+    档位丢给后端。下拉框选项文案复用概览的 `win.*`（不是 `fmtDur`），这样两处显示
+    完全一致。
 22. **TCP 直连的 Basic Auth 放在 `MarkTCP` 内层**（v0.5.15）：认证中间件必须能读到
     `MarkTCP` 写进 context 的 `tcpROKey`，所以顺序是
     `MarkTCP → authTCP → gzip → mux`（`New` 返回 `securityHeaders(authTCP(gzip(mux)))`）。
@@ -248,11 +295,6 @@ Vue3 + Vite + vue-i18n + ECharts 按需（gzip ~210KB）。页面懒加载分 ch
     100% 还继续滚时抛 `zoombeyond`，由上层切到下一档并重取（分页式加载），否则
     用户永远只能缩到当前档位的全量。缩放比例改成按 `deltaY` 连续计算
     （`pow(1.0015, deltaY)`，钳制 0.5~2），触控板小步长也顺滑。
-21. **独立页（温度/网络/磁盘）的窗口档位走两条数据路径**（v0.5.14）：`winSec <= 900`
-    走 `/api/ring?sec=N`（实时环，1s 采样），更长的窗口走 `/api/series?level=l0`。
-    后端 `ring` 对 `sec > 900` 直接钳成 900，所以前端必须自己按 900 分界，不能只把
-    档位丢给后端。下拉框选项文案复用概览的 `win.*`（不是 `fmtDur`），这样两处显示
-    完全一致。
 
 ## 8. 发版清单
 
