@@ -7,7 +7,7 @@ export default {
   wip: '開発中…',
   adminOnly: '管理者身份を確認できません：観瀾は fnOS 管理者専用です。管理者の場合は fnOS のログインセッション失効の可能性があります——ページを更新または再ログインしてください。',
   thermal: {
-    zoneNote: 'センサー説明：package=SoC 全体、bigcore/littlecore=CPU クラスタ、center=SoC 中央、gpu/npu=各モジュール、sda=HDD。3:0:0:0 のような名前は SATA コントローラ（host:bus.target.lun）のリンク温度です。',
+    zoneNote: 'センサー説明：package=SoC 全体、bigcore/littlecore=CPU クラスタ、center=SoC 中央、gpu/npu=各モジュール、ドライブ名（sda / nvme0n1 など）=ドライブ本体温度。',
   },
   card: {
     cpu: 'CPU', mem: 'メモリ', swap: 'Swap / zram', npu: 'NPU', gpu: 'GPU',

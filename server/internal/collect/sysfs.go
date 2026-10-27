@@ -41,9 +41,13 @@ func readTemps() map[string]float64 {
 			continue
 		}
 		key := fmt.Sprintf("drivetemp.%d", i)
-		if dev, err := os.Readlink(filepath.Join(h, "device")); err == nil {
+		// SATA 盘的 device 本名是 SCSI 地址（如 3:0:0:0），真正的块设备名在
+		// device/block/ 目录下（该目录名为 block，子目录才是 sda 这类设备名）
+		if ents, err := os.ReadDir(filepath.Join(h, "device", "block")); err == nil && len(ents) > 0 {
+			key = ents[0].Name() // 如 sda
+		} else if dev, err := os.Readlink(filepath.Join(h, "device")); err == nil {
 			if base := filepath.Base(dev); base != "" {
-				key = base // 如 sda
+				key = base
 			}
 		}
 		tempFiles, _ := filepath.Glob(filepath.Join(h, "temp*_input"))

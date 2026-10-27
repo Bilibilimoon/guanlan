@@ -13,7 +13,7 @@ export default {
   wip: 'Work in progress…',
   adminOnly: 'Cannot confirm admin identity: Guanlan is for fnOS administrators only. If you are an admin, your fnOS session may have expired — refresh the page or sign in again.',
   thermal: {
-    zoneNote: 'Sensors: package = whole SoC, bigcore/littlecore = CPU clusters, center = SoC center, gpu/npu = modules, sda = HDD; names like 3:0:0:0 are the SATA controller (host:bus.target.lun) link temperature.',
+    zoneNote: 'Sensors: package = whole SoC, bigcore/littlecore = CPU clusters, center = SoC center, gpu/npu = modules, drive names like sda / nvme0n1 = drive body temperature.',
   },
   card: {
     cpu: 'CPU',

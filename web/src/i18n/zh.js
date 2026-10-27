@@ -13,7 +13,7 @@ export default {
   wip: '开发中…',
   adminOnly: '无法确认管理员身份：观澜仅对 fnOS 管理员开放。若你是管理员，可能是 fnOS 登录状态已过期——刷新页面或重新登录 fnOS 即可恢复。',
   thermal: {
-    zoneNote: '传感器说明：package=SoC 封装整体，bigcore/littlecore=大小核集群，center=SoC 中心，gpu/npu=各自模块，sda=机械硬盘；形如 3:0:0:0 的名称是 SATA 控制器（host:bus.target.lun 编号），代表 SATA 链路温度。',
+    zoneNote: '传感器说明：package=SoC 封装整体，bigcore/littlecore=大小核集群，center=SoC 中心，gpu/npu=各自模块，硬盘 sda / nvme0n1 等=盘体温度。',
   },
   card: {
     cpu: 'CPU',

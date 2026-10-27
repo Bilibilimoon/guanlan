@@ -47,19 +47,27 @@ const TEMP_NAMES = {
   'center-thermal': { zh: '中心', en: 'Center', ja: 'センター' },
   'gpu-thermal': { zh: 'GPU', en: 'GPU', ja: 'GPU' },
   'npu-thermal': { zh: 'NPU', en: 'NPU', ja: 'NPU' },
-  '3:0:0:0': { zh: 'SATA控制器', en: 'SATA ctrl', ja: 'SATAコントローラ' },
+  // 旧版 drivetemp 曾以 SCSI 地址命名硬盘温度，保留兜底供历史曲线显示
+  '3:0:0:0': { zh: '硬盘', en: 'Drive', ja: 'ドライブ' },
   mmcblk0: { zh: 'eMMC', en: 'eMMC', ja: 'eMMC' },
 }
 const TEMP_TIPS = {
-  zh: 'SoC 内部温度传感器；大核/小核指 CPU 集群；3:0:0:0 这类名称是 SATA 控制器（host:bus.target.lun 编号）的链路温度；sda 等设备名是硬盘盘体温度。',
-  en: 'Internal SoC sensors; big/little cores are CPU clusters; names like 3:0:0:0 are the SATA controller (host:bus.target.lun) link temperature; device names like sda are drive temperatures.',
-  ja: 'SoC 内部の温度センサー。ビッグ/リトルコアは CPU クラスタ。3:0:0:0 のような名前は SATA コントローラ（host:bus.target.lun）のリンク温度。sda などはドライブ本体温度。',
+  zh: 'SoC 内部温度传感器；大核/小核指 CPU 集群；sda / nvme0n1 等设备名是硬盘盘体温度。',
+  en: 'Internal SoC sensors; big/little cores are CPU clusters; device names like sda / nvme0n1 are drive temperatures.',
+  ja: 'SoC 内部の温度センサー。ビッグ/リトルコアは CPU クラスタ。sda / nvme0n1 などはドライブ本体温度。',
 }
+
+// 块设备名模式：sdX / nvmeXnY / mmcblkX / vdX / nvmeXnYpZ
+const BLOCK_RE = /^(sd[a-z]+|nvme\d+n\d+(p\d+)?|mmcblk\d+(p\d+)?|vd[a-z]+)$/
 
 export function tempName(key, locale = 'zh') {
   const e = TEMP_NAMES[key]
   if (e) return e[locale] || e.zh
   if (key.endsWith('-thermal')) return key.replace(/-thermal$/, '')
+  if (BLOCK_RE.test(key)) {
+    const d = { zh: '硬盘', en: 'Drive', ja: 'ドライブ' }[locale] || '硬盘'
+    return `${d} ${key}`
+  }
   return key
 }
 
