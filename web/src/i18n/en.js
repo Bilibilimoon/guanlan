@@ -63,9 +63,10 @@ export default {
   hist: {
     r10m: '10m', r1h: '1h', r1d: '1d', r1w: '1w', r1M: '1M', r1y: '1y',
     groupLabel: 'Metrics',
-    group: { usage: 'Usage', power: 'Power', thermal: 'Thermal', network: 'Network', disk: 'Disk', load: 'Load', fan: 'Fan' },
+    group: { usage: 'Usage', power: 'Power', thermal: 'Thermal', network: 'Network', traffic: 'Traffic', disk: 'Disk', load: 'Load', fan: 'Fan' },
     powerW: 'Power (est.)',
-    hint: 'Scroll to zoom the time axis: the window selector follows the visible span, and zooming into recent ranges switches to finer data (L0 raw / L1 5min / L2 1h).',
+    gran: { minute: 'min', hour: 'hour', day: 'day' },
+    hint: 'Scroll to zoom the time axis: the window selector follows the visible span, and zooming into recent ranges switches to finer data (L0 raw / L1 5min / L2 1h).\nTraffic volumes integrate sampled rates (usually within 1%); gaps use the typical sample interval, so periods without recording can overestimate.',
     diskPaused: 'Only {free} GB free on the data volume, below the {min} GB threshold: history recording is paused and resumes automatically once space is available.',
   },
   proc: {

@@ -63,9 +63,10 @@ export default {
   hist: {
     r10m: '10分钟', r1h: '1小时', r1d: '1天', r1w: '1周', r1M: '1月', r1y: '1年',
     groupLabel: '指标',
-    group: { usage: '占用', power: '功耗', thermal: '温度', network: '网络', disk: '磁盘', load: '负载', fan: '风扇' },
+    group: { usage: '占用', power: '功耗', thermal: '温度', network: '网络', traffic: '流量', disk: '磁盘', load: '负载', fan: '风扇' },
     powerW: '功耗（估算）',
-    hint: '滚轮缩放时间轴：窗口档位跟着可视跨度自动切换，放大到最近时段自动换用更细的数据粒度（L0 原始 / L1 5分钟 / L2 1小时）。',
+    gran: { minute: '分钟', hour: '小时', day: '天' },
+    hint: '滚轮缩放时间轴：窗口档位跟着可视跨度自动切换，放大到最近时段自动换用更细的数据粒度（L0 原始 / L1 5分钟 / L2 1小时）。\n「流量」分组的上传/下载量由采样速率对时间积分估算（误差通常小于 1%）；没有采样数据的时段按典型间隔估算，服务停采期间会偏大。',
     diskPaused: '磁盘剩余 {free} GB，低于设定的 {min} GB：历史记录已暂停，空间恢复后自动继续。',
   },
   proc: {

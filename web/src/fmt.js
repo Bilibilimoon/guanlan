@@ -104,6 +104,13 @@ export function fmtAxisMs(ms, spanSec) {
   return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${hm}`
 }
 
+// 日粒度聚合数据的 X 轴刻度：只到月-日（毫秒时间戳）
+export function fmtMonthDayMs(ms) {
+  const d = new Date(ms)
+  const p = (x) => String(x).padStart(2, '0')
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
 export function fmtRPM(n) { return `${Math.round(n)} RPM` }
 
 // 压力色：0(轻)→绿，100(重)→红，中间经黄（HSL 连续插值）

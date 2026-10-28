@@ -39,6 +39,8 @@ const GROUPS = [
   { id: 'power', yType: 'watt', metrics: ['power_w'] },
   { id: 'thermal', yType: 'celsius', prefix: 'temp.', fine: true },
   { id: 'network', yType: 'bytes', prefix: 'net.', fine: true },
+  // 流量：把 net.<ifc>.rx/tx 的速率按时间积分成「时段总量」，与速率图并列
+  { id: 'traffic', yType: 'bytesTotal', mode: 'traffic' },
   { id: 'disk', yType: 'bytes', prefix: 'disk.', fine: true },
   { id: 'load', yType: 'count', metrics: ['load1', 'load5', 'load15'] },
   { id: 'fan', yType: 'rpm', metrics: ['fan'] },
@@ -52,14 +54,75 @@ const coarseSec = ref(7 * 86400)
 let zoomGuardUntil = 0
 const group = ref('usage')
 const level = ref('l0')
-const series = ref([])
+const rawSeries = ref([]) // 接口返回的原始序列（速率）；流量分组在其上做积分聚合
+const granSec = ref(0)    // 流量分组的聚合粒度（秒）；0=不需要聚合
 const resetKey = ref(0)
 const loading = ref(false)
 
 const metaRef = ref(null)
 const groupDef = computed(() => GROUPS.find((g) => g.id === group.value))
+const isTraffic = computed(() => groupDef.value?.mode === 'traffic')
 const ranges = computed(() => (groupDef.value.fine ? FINE_RANGES : COARSE_RANGES))
 const rangeSec = computed(() => (groupDef.value.fine ? fineSec.value : coarseSec.value))
+const series = computed(() => (isTraffic.value ? aggregateTraffic(rawSeries.value, granSec.value) : rawSeries.value))
+
+// 流量聚合粒度：可视跨度越大越粗；层的原始桶宽是下限（L2 最细 1 小时、L1 5 分钟、L0 1 分钟）
+function targetGran(span) {
+  if (span >= 2 * 86400) return 86400
+  if (span >= 2 * 3600) return 3600
+  if (span >= 35 * 60) return 300
+  return 60
+}
+function granFor(span, lv) {
+  const floor = lv === 'l2' ? 3600 : lv === 'l1' ? 300 : 60
+  return Math.max(targetGran(span), floor)
+}
+function granKey(g) {
+  return g >= 86400 ? 'day' : g >= 3600 ? 'hour' : 'minute'
+}
+
+// 本地时区的桶起点：日=00:00，小时=整点，分钟按粒度对齐
+function bucketStart(ts, gran) {
+  if (gran >= 86400) {
+    const d = new Date(ts * 1000)
+    d.setHours(0, 0, 0, 0)
+    return d.getTime() / 1000
+  }
+  if (gran >= 3600) {
+    const d = new Date(ts * 1000)
+    d.setMinutes(0, 0, 0)
+    return d.getTime() / 1000
+  }
+  return Math.floor(ts / gran) * gran
+}
+
+// 速率积分成时段总量：每点贡献 = 速率 × 到下一采样点的时间差。
+// 间隔明显大于典型值（停机/缺数据）时按典型间隔计，避免把空档时长乘进去。
+function aggregateTraffic(list, gran) {
+  if (!gran) return list
+  return list.map((s) => {
+    const pts = s.points || []
+    if (pts.length < 2) return s
+    const diffs = []
+    for (let i = 1; i < pts.length; i++) {
+      const d = pts[i][0] - pts[i - 1][0]
+      if (d > 0) diffs.push(d)
+    }
+    diffs.sort((a, b) => a - b)
+    const med = diffs.length ? diffs[Math.floor(diffs.length / 2)] : gran
+    const m = new Map()
+    for (let i = 0; i < pts.length; i++) {
+      const [t, v] = pts[i]
+      if (!isFinite(v) || v < 0) continue
+      let dt = i + 1 < pts.length ? pts[i + 1][0] - t : med
+      if (!(dt > 0) || dt > med * 2.5) dt = med
+      const b = bucketStart(t, gran)
+      m.set(b, (m.get(b) || 0) + v * dt)
+    }
+    const out = [...m.entries()].sort((a, b) => a[0] - b[0])
+    return { ...s, points: out }
+  })
+}
 
 // 滚轮缩放后把可视跨度吸附到最近档位（时间尺度上等比，所以用对数距离）
 function nearestSec(span) {
@@ -90,8 +153,19 @@ const diskMin = computed(() => {
 })
 
 // 组内指标清单：固定列表或按前缀从已知指标里取
+const VIRTUAL_IFACE = /^(lo|veth|docker|br-|virbr|tun|tap|wg)/
 function metricsOf() {
   const g = groupDef.value
+  if (g.mode === 'traffic') {
+    const known = metaRef.value?.metrics || []
+    // 只取物理网口的收发速率；容器桥/虚拟口会与物理口重复计数
+    return known
+      .filter((m) => {
+        const mm = m.match(/^net\.(.+)\.(rx|tx)$/)
+        return !!mm && !VIRTUAL_IFACE.test(mm[1])
+      })
+      .slice(0, 24)
+  }
   if (g.metrics) return g.metrics
   const known = metaRef.value?.metrics || []
   return known.filter((m) => m.startsWith(g.prefix) && !m.includes('boot')).slice(0, 24)
@@ -101,11 +175,31 @@ function metricsOf() {
 const LEVEL_LABEL = { l0: 'L0', l1: 'L1', l2: 'L2' }
 const levelTip = computed(() => {
   const g = t(`hist.group.${group.value}`)
-  return `${g} · ${LEVEL_LABEL[level.value]}`
+  const agg = isTraffic.value ? ` · ${t(`hist.gran.${granKey(granSec.value)}`)}` : ''
+  return `${g} · ${LEVEL_LABEL[level.value]}${agg}`
 })
 
 // 并发保护：快速切档/滚轮换层时，旧请求返回后不得覆盖新请求的结果
 let loadSeq = 0
+
+// 流量分组把 net.<ifc>.rx/tx 显示成「↓ 网卡 / ↑ 网卡」
+function displayName(name) {
+  if (isTraffic.value) {
+    const mm = name.match(/^net\.(.+)\.(rx|tx)$/)
+    if (mm) return `${mm[2] === 'rx' ? '↓' : '↑'} ${mm[1]}`
+  }
+  return prettyName(name)
+}
+
+function buildSeries(res) {
+  const out = []
+  Object.entries(res.series || {}).forEach(([name, pts], i) => {
+    if (pts && pts.length) {
+      out.push({ name: displayName(name), color: COLORS[i % COLORS.length], points: pts })
+    }
+  })
+  return out
+}
 
 async function loadRange(sec, lv, keepView = false) {
   const seq = ++loadSeq
@@ -115,17 +209,12 @@ async function loadRange(sec, lv, keepView = false) {
     const end = Math.floor(Date.now() / 1000)
     const start = end - sec
     const ms = metricsOf()
-    if (!ms.length) { series.value = []; return }
+    if (!ms.length) { rawSeries.value = []; return }
     const res = await getJSON(`api/series?metrics=${ms.join(',')}&start=${start}&end=${end}&level=${lv}`)
     if (seq !== loadSeq) return
-    const out = []
-    Object.entries(res.series || {}).forEach(([name, pts], i) => {
-      if (pts && pts.length) {
-        out.push({ name: prettyName(name), color: COLORS[i % COLORS.length], points: pts })
-      }
-    })
-    series.value = out
+    rawSeries.value = buildSeries(res)
     level.value = lv
+    granSec.value = isTraffic.value ? granFor(sec, lv) : 0
     if (!keepView) {
       zoomGuardUntil = Date.now() + 800
       resetKey.value++
@@ -152,8 +241,13 @@ function prettyName(name) {
     .replace('power_w', t('hist.powerW'))
 }
 
-// 按当前层默认
+// 按当前层默认：流量按天/小时聚合，不需要 L0 的原始精度；短窗口仍取 L0 以便缩放细化
 function defaultLevel(sec) {
+  if (isTraffic.value) {
+    if (sec <= 2 * 86400) return 'l0'
+    if (sec <= 180 * 86400) return 'l1'
+    return 'l2'
+  }
   if (sec <= 7 * 86400) return 'l0'
   if (sec <= 45 * 86400) return 'l1'
   return 'l2'
@@ -189,6 +283,8 @@ function onViewChange(v) {
     const want = span <= 2 * 86400 && s > now - 30 * 86400 ? 'l0'
       : span <= 180 * 86400 && s > now - 180 * 86400 ? 'l1'
       : 'l2'
+    // 流量分组：可视跨度变了就换聚合粒度（不换层时无需重新取数，本地重算）
+    if (isTraffic.value) granSec.value = granFor(span, want)
     if (want !== level.value) {
       // 请求范围覆盖可视窗口外扩 20%（至少覆盖当前窗口）
       const pad = Math.max(span * 0.2, 60)
@@ -217,12 +313,9 @@ async function loadWindow(start, end, lv) {
     if (!ms.length) return
     const res = await getJSON(`api/series?metrics=${ms.join(',')}&start=${Math.floor(start)}&end=${Math.ceil(end)}&level=${lv}`)
     if (seq !== loadSeq) return
-    const out = []
-    Object.entries(res.series || {}).forEach(([name, pts], i) => {
-      if (pts && pts.length) out.push({ name: prettyName(name), color: COLORS[i % COLORS.length], points: pts })
-    })
-    series.value = out
+    rawSeries.value = buildSeries(res)
     level.value = lv
+    if (isTraffic.value) granSec.value = granFor(end - start, lv)
     // 下拉框只能是档位里的值：按实际跨度吸附，避免出现"空白选中"
     setCurrentSec(nearestSec(end - start))
   } finally {
@@ -262,7 +355,7 @@ onBeforeUnmount(() => {
     </p>
     <section class="panel">
       <LiveChart :series="series" :y-type="groupDef.yType" height="62vh" :zoom="true" :reset-key="resetKey"
-        @viewchange="onViewChange" @zoombeyond="onZoomBeyond" />
+        :gran-sec="granSec" @viewchange="onViewChange" @zoombeyond="onZoomBeyond" />
     </section>
     <p class="hint">{{ t('hist.hint') }}</p>
   </div>
@@ -298,5 +391,5 @@ onBeforeUnmount(() => {
   margin-top: 12px; background: var(--panel); border: 1px solid var(--border);
   border-radius: 10px; padding: 10px 12px 6px;
 }
-.hint { color: var(--muted); font-size: 12px; }
+.hint { color: var(--muted); font-size: 12px; white-space: pre-line; }
 </style>

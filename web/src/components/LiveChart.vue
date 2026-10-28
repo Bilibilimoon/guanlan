@@ -4,7 +4,7 @@ import * as echarts from 'echarts/core'
 import { LineChart } from 'echarts/charts'
 import { GridComponent, LegendComponent, TooltipComponent, DataZoomInsideComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
-import { fmtBytes, fmtClockMs, fmtFullMs, fmtAxisMs } from '../fmt'
+import { fmtBytes, fmtClockMs, fmtFullMs, fmtAxisMs, fmtMonthDayMs } from '../fmt'
 
 // 按需引入：dataZoom 也要注册，否则 inside 型 dataZoom 的配置不报错但不生效（滚轮缩不了）
 echarts.use([LineChart, GridComponent, LegendComponent, TooltipComponent, DataZoomInsideComponent, CanvasRenderer])
@@ -12,9 +12,11 @@ echarts.use([LineChart, GridComponent, LegendComponent, TooltipComponent, DataZo
 const props = defineProps({
   // [{ name, color, points: [[unixSec, value], ...] }]（秒，进图前统一转毫秒）
   series: { type: Array, default: () => [] },
-  // percent | celsius | bytes | rpm | watt | count
+  // percent | celsius | bytes | bytesTotal | rpm | watt | count
   yType: { type: String, default: 'percent' },
   height: { type: String, default: '220px' },
+  // 数据点的聚合粒度（秒，0=原始点）：日粒度时 X 轴只显示月-日，避免满屏 00:00
+  granSec: { type: Number, default: 0 },
   legend: { type: Boolean, default: true },
   // 启用滚轮缩放（历史页用）；变化时重置为全量视图
   zoom: { type: Boolean, default: false },
@@ -34,6 +36,7 @@ function fmtVal(v) {
     case 'percent': return `${v.toFixed(1)}%`
     case 'celsius': return `${v.toFixed(1)}°C`
     case 'bytes': return fmtBytes(v) + '/s'
+    case 'bytesTotal': return fmtBytes(v)
     case 'rpm': return `${Math.round(v)} RPM`
     case 'watt': return `${v.toFixed(1)} W`
     default: return String(Math.round(v * 100) / 100)
@@ -48,6 +51,7 @@ function yAxisOpt() {
     case 'percent': return { ...base, max: 100, axisLabel: { ...base.axisLabel, formatter: '{value}%' } }
     case 'celsius': return { ...base, axisLabel: { ...base.axisLabel, formatter: '{value}°' } }
     case 'bytes': return { ...base, axisLabel: { ...base.axisLabel, formatter: (v) => fmtBytes(v) } }
+    case 'bytesTotal': return { ...base, axisLabel: { ...base.axisLabel, formatter: (v) => fmtBytes(v) } }
     case 'watt': return { ...base, scale: true, axisLabel: { ...base.axisLabel, formatter: (v) => `${v}W` } }
     default: return base
   }
@@ -77,10 +81,14 @@ function render() {
       borderColor: '#21262d',
       textStyle: { color: '#e6edf3', fontSize: 12 },
       formatter: (params) => {
-        if (!params.length) return ''
-        let html = `<b>${fmtFullMs(params[0].value[0])}</b>`
+        if (!params || !params.length) return ''
+        // 某序列在该时间点没有数据时 value 可能为空，逐项防御，避免整页报错
+        const t0 = Array.isArray(params[0].value) ? params[0].value[0] : params[0].axisValue
+        let html = `<b>${fmtFullMs(t0)}</b>`
         for (const p of params) {
-          html += `<br/>${p.marker} ${p.seriesName}　<b>${fmtVal(p.value[1])}</b>`
+          const v = Array.isArray(p.value) ? p.value[1] : undefined
+          if (v == null || !isFinite(v)) continue
+          html += `<br/>${p.marker} ${p.seriesName}　<b>${fmtVal(v)}</b>`
         }
         return html
       },
@@ -101,9 +109,11 @@ function render() {
     grid: { left: 56, right: 14, top: props.legend ? 30 : 8, bottom: 24 },
     xAxis: {
       type: 'time',
+      // 聚合数据的刻度间隔不小于桶宽，日粒度时同一天不会重复出现多个标签
+      minInterval: props.granSec > 0 ? props.granSec * 1000 : undefined,
       axisLabel: {
         color: '#8b949e',
-        formatter: (v) => fmtAxisMs(v, spanSec),
+        formatter: (v) => (props.granSec >= 86400 ? fmtMonthDayMs(v) : fmtAxisMs(v, spanSec)),
         hideOverlap: true,
       },
       splitLine: { show: false },
