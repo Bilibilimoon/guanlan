@@ -1,6 +1,6 @@
 # 观澜（guanlan）开发记录（面向后续维护者 / AI）
 
-最后更新：2026-10-30，对应版本 **0.5.19**。发布渠道：GitHub Releases（tag 挂 `guanlan.fpk`），
+最后更新：2026-10-30，对应版本 **0.5.20**。发布渠道：GitHub Releases（tag 挂 `guanlan.fpk`），
 完整变更列表见 [CHANGELOG.md](CHANGELOG.md)。
 
 这份文档记录「为什么这么做」和「踩过哪些坑」，README.md 只讲用户怎么装怎么用。
@@ -301,6 +301,14 @@ Vue3 + Vite + vue-i18n + ECharts 按需（gzip ~210KB）。页面懒加载分 ch
     增量解析，TCP 9780 直连不在该日志里、由中间件自记。首次导入单轮上限 8MB，
     **完成标记必须在读到 EOF 才置位**，否则 7 天过滤失效会把全量旧日志导入；
     导入期间 2 秒快轮收尾，避免首屏只有半截数据。
+26. **表格页要"面板内滚动"必须先把高度链建起来（v0.5.20）**：只想给 `.panel`
+    加 `overflow:auto` 没用——`height:auto` 的块会随内容长高，滚动条永远不出现。
+    做法是壳层 `height:100dvh; display:flex; column` + `.main{flex:1;min-height:0;
+    overflow-y:auto}`，页面根 `flex:1;min-height:0`，面板 `flex:0 1 auto;
+    min-height:160px`（内容不足不拉满、超出才收缩），再用 `.tbl-wrap`
+    `flex:1;min-height:0;overflow:auto` 承担双向滚动；表头 `position:sticky;top:0`
+    必须带**不透明背景**，否则行会从表头下面透出来。注意滚动容器从 `body`
+    换成了 `.main`，其它页面（概览/设置）的高内容自动由 `.main` 滚动，无需改。
 
 ## 8. 发版清单
 
@@ -330,3 +338,4 @@ Vue3 + Vite + vue-i18n + ECharts 按需（gzip ~210KB）。页面懒加载分 ch
 - 0.5.17 硬盘温度修正：SATA 盘按 hwmon `device/block` 反查块设备名（「硬盘 sda」）
 - 0.5.18 历史页「流量」分组：上传/下载总量按速率积分，缩放自适应天/小时/分钟粒度
 - 0.5.19 「访问」页：来源 IP 聚合、失败橙/红标记（nginx 日志增量解析 + 直连自记）
+- 0.5.20 整屏布局：进程/访问页表格按窗口高度收缩、面板内滚动、表头吸顶

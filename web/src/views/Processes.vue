@@ -82,6 +82,7 @@ const zh = computed(() => locale.value)
       </select>
     </div>
     <section class="panel">
+      <div class="tbl-wrap">
       <table :style="{ minWidth: procMinW + 'px' }">
         <colgroup>
           <col v-for="c in COLS.slice(0, -1)" :key="c.key" :style="{ width: (widths[c.key] || c.w) + 'px' }" />
@@ -109,6 +110,7 @@ const zh = computed(() => locale.value)
           </tr>
         </tbody>
       </table>
+      </div>
       <p v-if="filtered.length > 400" class="hint">{{ t('proc.truncated', { n: filtered.length }) }}</p>
       <p class="hint">{{ t('proc.limitNote') }}</p>
     </section>
@@ -116,14 +118,22 @@ const zh = computed(() => locale.value)
 </template>
 
 <style scoped>
-.ctrl { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 14px; padding: 8px 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
+.procs { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.ctrl { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 14px; padding: 8px 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; flex: none; }
 .ctrl-label { color: var(--muted); font-size: 12px; }
 .spacer { flex: 1; }
 .search { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; font-size: 13px; width: 240px; }
 .sel { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; font-size: 12px; cursor: pointer; }
-.panel { margin-top: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; overflow-x: auto; }
+/* 面板高度随剩余视口收缩（内容不足时不强行拉满），表格在 tbl-wrap 内双向滚动 */
+.panel {
+  margin-top: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 12px; overflow: hidden;
+  flex: 0 1 auto; min-height: 160px;
+  display: flex; flex-direction: column;
+}
+.tbl-wrap { flex: 1; min-height: 0; overflow: auto; }
 table { border-collapse: collapse; font-size: 13px; table-layout: fixed; width: 100%; }
-th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 10px 4px 0; white-space: nowrap; position: relative; user-select: none; }
+th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 10px 4px 0; white-space: nowrap; position: sticky; top: 0; z-index: 1; background: var(--panel); user-select: none; }
 th.sortable { cursor: pointer; }
 th.sortable:hover { color: var(--text); }
 .arrow { color: var(--accent); font-size: 10px; margin-left: 2px; }
@@ -132,5 +142,5 @@ th:hover .colgrip { background: rgba(47, 129, 247, 0.35); border-radius: 2px; }
 td { padding: 4px 10px 4px 0; border-top: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cmd { overflow: hidden; text-overflow: ellipsis; }
 .mono { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
-.hint { color: var(--muted); font-size: 12px; }
+.hint { color: var(--muted); font-size: 12px; flex: none; }
 </style>

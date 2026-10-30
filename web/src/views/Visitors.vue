@@ -111,6 +111,7 @@ function toggle(ip) {
     </p>
 
     <section class="panel">
+      <div class="tbl-wrap">
       <table :style="{ minWidth: vMinW + 'px' }">
         <colgroup>
           <col v-for="c in VCOLS.slice(0, -1)" :key="c.key" :style="{ width: (vw[c.key] || c.w) + 'px' }" />
@@ -152,6 +153,7 @@ function toggle(ip) {
           </template>
         </tbody>
       </table>
+      </div>
       <p v-if="!items.length" class="hint">{{ t('visitors.none') }}</p>
     </section>
     <p class="hint">{{ t('visitors.hint') }}</p>
@@ -159,18 +161,26 @@ function toggle(ip) {
 </template>
 
 <style scoped>
-.ctrl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 14px; padding: 8px 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
+.visitors { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.ctrl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 14px; padding: 8px 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; flex: none; }
 .ctrl-label { color: var(--muted); font-size: 12px; }
 .sel { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; font-size: 12px; cursor: pointer; }
 .search { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; font-size: 12px; width: 200px; }
 .chk { color: var(--muted); font-size: 12px; display: flex; align-items: center; gap: 4px; cursor: pointer; }
 .spacer { flex: 1; }
 .sum { color: var(--muted); font-size: 12px; }
-.src { color: var(--muted); font-size: 12px; margin: 10px 4px 0; }
+.src { color: var(--muted); font-size: 12px; margin: 10px 4px 0; flex: none; }
 .src.bad { color: var(--red); }
-.panel { margin-top: 8px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; overflow-x: auto; }
+/* 面板高度随剩余视口收缩（内容不足时不强行拉满），表格在 tbl-wrap 内双向滚动 */
+.panel {
+  margin-top: 8px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 12px; overflow: hidden;
+  flex: 0 1 auto; min-height: 160px;
+  display: flex; flex-direction: column;
+}
+.tbl-wrap { flex: 1; min-height: 0; overflow: auto; }
 table { border-collapse: collapse; font-size: 13px; table-layout: fixed; width: 100%; }
-th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 8px 4px 0; position: relative; white-space: nowrap; }
+th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 8px 4px 0; position: sticky; top: 0; z-index: 1; background: var(--panel); white-space: nowrap; }
 td { padding: 5px 8px 5px 0; border-top: 1px solid var(--border); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: top; }
 .clickable { cursor: pointer; }
 .row.warn { background: rgba(210, 153, 34, 0.06); }
@@ -187,7 +197,7 @@ td { padding: 5px 8px 5px 0; border-top: 1px solid var(--border); overflow: hidd
 .chip { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 1px 8px; font-size: 12px; }
 .small { font-size: 11px; word-break: break-all; }
 .mono { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
-.hint { color: var(--muted); font-size: 12px; margin: 8px 4px 0; }
+.hint { color: var(--muted); font-size: 12px; margin: 8px 4px 0; flex: none; }
 .colgrip { position: absolute; right: 0; top: 0; bottom: 0; width: 10px; cursor: col-resize; }
 th:hover .colgrip { background: rgba(47, 129, 247, 0.35); border-radius: 2px; }
 </style>

@@ -80,7 +80,18 @@ onBeforeUnmount(() => stopAlertPoll && stopAlertPoll())
 html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
 body { font: 14px/1.5 -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; }
 
-.app { width: 100%; margin: 0 auto; padding: 0 clamp(12px, 2vw, 32px) 32px; }
+/* 应用壳固定一屏高：内容区统一在 .main 内滚动，
+   表格页因此能拿到"剩余视口高度"做panel内滚动 */
+.app {
+  width: 100%; margin: 0 auto; padding: 0 clamp(12px, 2vw, 32px);
+  height: 100vh; height: 100dvh;
+  display: flex; flex-direction: column;
+}
+.main {
+  flex: 1; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column;
+  padding-bottom: 32px;
+}
 .topbar {
   display: flex; align-items: center; gap: 16px;
   padding: 12px 0; border-bottom: 1px solid var(--border);

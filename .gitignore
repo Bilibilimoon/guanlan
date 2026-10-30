@@ -5,6 +5,7 @@ server/internal/api/dist/*
 /guanlan
 /guanlan-arm64
 /guanlan-amd64
+/guanlan-dev
 data/
 *.db
 *.db-wal
