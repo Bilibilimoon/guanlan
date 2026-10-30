@@ -9,12 +9,13 @@ const Thermal = defineAsyncComponent(() => import('./views/Thermal.vue'))
 const Network = defineAsyncComponent(() => import('./views/Network.vue'))
 const Disks = defineAsyncComponent(() => import('./views/Disks.vue'))
 const History = defineAsyncComponent(() => import('./views/History.vue'))
+const Visitors = defineAsyncComponent(() => import('./views/Visitors.vue'))
 const Alerts = defineAsyncComponent(() => import('./views/Alerts.vue'))
 const Settings = defineAsyncComponent(() => import('./views/Settings.vue'))
 
 const { t } = useI18n()
 const tab = ref('overview')
-const tabs = ['overview', 'processes', 'thermal', 'network', 'disks', 'history', 'alerts', 'settings']
+const tabs = ['overview', 'processes', 'thermal', 'network', 'disks', 'history', 'visitors', 'alerts', 'settings']
 const denied = ref(false)
 const unreadAlerts = ref(0) // 有未确认告警时「异常警告」tab 标红
 onAdminDenied(() => { denied.value = true })
@@ -56,6 +57,7 @@ onBeforeUnmount(() => stopAlertPoll && stopAlertPoll())
       <Network v-else-if="tab === 'network'" />
       <Disks v-else-if="tab === 'disks'" />
       <History v-else-if="tab === 'history'" />
+      <Visitors v-else-if="tab === 'visitors'" />
       <Alerts v-else-if="tab === 'alerts'" />
       <Settings v-else-if="tab === 'settings'" />
     </main>

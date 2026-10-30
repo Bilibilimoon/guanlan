@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"guanlan/server/internal/alert"
+	"guanlan/server/internal/audit"
 	"guanlan/server/internal/collect"
 	"guanlan/server/internal/store"
 )
@@ -37,6 +38,8 @@ type Options struct {
 	DbPath string
 	// Disk 磁盘空间守卫（可空：不做阈值保护）
 	Disk *store.DiskGuard
+	// Access 访问记录器（可空：禁用访问记录接口）
+	Access *audit.Auditor
 }
 
 type Server struct {
@@ -75,6 +78,7 @@ func New(col *collect.Collector, st *store.Store, opt Options) http.Handler {
 	mux.HandleFunc("/api/alerts", s.gateRO(s.alerts))
 	mux.HandleFunc("/api/alerts/rules", s.gate(s.alertRules))
 	mux.HandleFunc("/api/alerts/ack", s.gate(s.alertAck))
+	mux.HandleFunc("/api/visitors", s.gateRO(s.visitors))
 
 	// 静态资源 + SPA fallback
 	dist, _ := fs.Sub(distFS, "dist")
@@ -95,7 +99,7 @@ func New(col *collect.Collector, st *store.Store, opt Options) http.Handler {
 		fileServer.ServeHTTP(w, r2)
 	})
 
-	return securityHeaders(s.authTCP(s.gzip(mux)))
+	return securityHeaders(s.recordTCP(s.authTCP(s.gzip(mux))))
 }
 
 // gate 管理员校验中间件（写接口）：生产模式仅放行网关注入 X-Trim-Isadmin: true。

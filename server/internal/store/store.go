@@ -70,6 +70,22 @@ CREATE TABLE IF NOT EXISTS meta(
   val TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_metrics_name ON metrics(name);
+-- 访问记录：按（来源 IP × 小时 × 目标）聚合，避免存原始请求把库撑爆
+CREATE TABLE IF NOT EXISTS access_hourly(
+  hour    INTEGER NOT NULL,
+  ip      TEXT NOT NULL,
+  topic   TEXT NOT NULL,
+  n       INTEGER NOT NULL DEFAULT 0,
+  page    INTEGER NOT NULL DEFAULT 0,
+  s2      INTEGER NOT NULL DEFAULT 0,
+  s3      INTEGER NOT NULL DEFAULT 0,
+  s4      INTEGER NOT NULL DEFAULT 0,
+  s5      INTEGER NOT NULL DEFAULT 0,
+  first_t INTEGER NOT NULL DEFAULT 0,
+  last_t  INTEGER NOT NULL DEFAULT 0,
+  ua      TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY(hour, ip, topic)
+) WITHOUT ROWID;
 `)
 	return err
 }
@@ -179,6 +195,109 @@ func (s *Store) Query(level string, names []string, start, end int64) (map[strin
 	return out, nil
 }
 
+// AccessDelta 是一条待累计的访问记录（调用方已把同一 key 的多次访问合并）。
+type AccessDelta struct {
+	Hour           int64 // 小时桶（本地时区整点，Unix 秒）
+	IP             string
+	Topic          string // 访问目标：app:<name> / assets / api 等
+	N              int64
+	Page           int64 // 页面打开数（排除接口轮询与静态资源）
+	S2, S3, S4, S5 int64
+	FirstT, LastT  int64
+	UA             string
+}
+
+// UpsertAccess 批量累计写入访问聚合表：同一（小时, IP, 目标）累加计数，
+// 首末时间取并集，UA 取最后一个非空值。单写入方（audit 协程），无需额外锁。
+func (s *Store) UpsertAccess(ds []AccessDelta) error {
+	if len(ds) == 0 {
+		return nil
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	stmt, err := tx.Prepare(`INSERT INTO access_hourly(hour,ip,topic,n,page,s2,s3,s4,s5,first_t,last_t,ua)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+		ON CONFLICT(hour,ip,topic) DO UPDATE SET
+		  n=n+excluded.n, page=page+excluded.page,
+		  s2=s2+excluded.s2, s3=s3+excluded.s3, s4=s4+excluded.s4, s5=s5+excluded.s5,
+		  first_t=CASE
+		    WHEN first_t=0 THEN excluded.first_t
+		    WHEN excluded.first_t=0 THEN first_t
+		    WHEN excluded.first_t<first_t THEN excluded.first_t
+		    ELSE first_t END,
+		  last_t=CASE WHEN excluded.last_t>last_t THEN excluded.last_t ELSE last_t END,
+		  ua=CASE WHEN excluded.ua<>'' THEN excluded.ua ELSE ua END`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+	for _, d := range ds {
+		if _, err := stmt.Exec(d.Hour, d.IP, d.Topic, d.N, d.Page, d.S2, d.S3, d.S4, d.S5, d.FirstT, d.LastT, d.UA); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// AccessRow 是按 IP 汇总后的访问记录（供 /api/visitors）。
+type AccessRow struct {
+	IP             string
+	N, Page        int64
+	S2, S3, S4, S5 int64
+	First, Last    int64
+	UA             string
+	Topics         map[string]int64
+}
+
+// QueryAccess 汇总 from（含）之后的访问记录，按最近访问时间倒序。
+func (s *Store) QueryAccess(from int64) ([]AccessRow, error) {
+	rows, err := s.db.Query(`SELECT ip, SUM(n), SUM(page), SUM(s2), SUM(s3), SUM(s4), SUM(s5),
+		MIN(CASE WHEN first_t>0 THEN first_t END), MAX(last_t), MAX(ua)
+		FROM access_hourly WHERE hour>=? GROUP BY ip ORDER BY MAX(last_t) DESC`, from)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []AccessRow{}
+	idx := map[string]int{}
+	for rows.Next() {
+		var r AccessRow
+		var first sql.NullInt64
+		if err := rows.Scan(&r.IP, &r.N, &r.Page, &r.S2, &r.S3, &r.S4, &r.S5, &first, &r.Last, &r.UA); err != nil {
+			return nil, err
+		}
+		if first.Valid {
+			r.First = first.Int64
+		}
+		r.Topics = map[string]int64{}
+		idx[r.IP] = len(out)
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	trows, err := s.db.Query(`SELECT ip, topic, SUM(n) FROM access_hourly
+		WHERE hour>=? GROUP BY ip, topic`, from)
+	if err != nil {
+		return nil, err
+	}
+	defer trows.Close()
+	for trows.Next() {
+		var ip, topic string
+		var n int64
+		if err := trows.Scan(&ip, &topic, &n); err != nil {
+			return nil, err
+		}
+		if i, ok := idx[ip]; ok {
+			out[i].Topics[topic] = n
+		}
+	}
+	return out, trows.Err()
+}
+
 // KnownMetrics 返回已有数据的指标名（供前端指标选择与估算器）。
 func (s *Store) KnownMetrics() []string {
 	rows, err := s.db.Query(`SELECT name FROM metrics ORDER BY name`)
@@ -238,6 +357,19 @@ func (s *Store) Retain() (string, error) {
 		if n, _ := res.RowsAffected(); n > 0 {
 			fmt.Fprintf(&sb, "%s:%d ", l.name, n)
 		}
+	}
+	// 访问记录保留期（默认 90 天，meta access_retain_days 可覆盖）
+	ad := int64(90)
+	if v, ok := s.GetMeta("access_retain_days"); ok {
+		if d, err := strconv.ParseInt(v, 10, 64); err == nil && d >= 1 && d <= 3650 {
+			ad = d
+		}
+	}
+	cutoff := now - ad*86400
+	if res, err := s.db.Exec(`DELETE FROM access_hourly WHERE hour < ?`, cutoff); err != nil {
+		return sb.String(), err
+	} else if n, _ := res.RowsAffected(); n > 0 {
+		fmt.Fprintf(&sb, "access:%d ", n)
 	}
 	return sb.String(), nil
 }

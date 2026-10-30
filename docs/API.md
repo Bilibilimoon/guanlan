@@ -29,6 +29,7 @@
 | `/api/data/clear` | POST | 管理 + CSRF | 清空历史数据，body 必须为 `{"confirm":"CLEAR"}` |
 | `/api/alerts/rules` | POST/PUT | 管理 + CSRF | 整体替换告警规则（≤32 条） |
 | `/api/alerts/ack` | POST | 管理 + CSRF | 确认告警 |
+| `/api/visitors?hours=24` | GET | 读 | 按来源 IP 汇总的访问记录（`hours` 1~720；可选 `ip` 子串、`fail=1`、`limit`） |
 
 ## 序列查询 `GET /api/series`
 

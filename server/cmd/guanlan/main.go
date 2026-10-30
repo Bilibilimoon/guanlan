@@ -15,11 +15,12 @@ import (
 
 	"guanlan/server/internal/alert"
 	"guanlan/server/internal/api"
+	"guanlan/server/internal/audit"
 	"guanlan/server/internal/collect"
 	"guanlan/server/internal/store"
 )
 
-var appVersion = "0.5.18"
+var appVersion = "0.5.19"
 
 func main() {
 	var (
@@ -108,6 +109,10 @@ func main() {
 		}
 	}()
 
+	// 访问记录：每 30 秒解析一次 nginx 访问日志并落库（首次导入最近 7 天）
+	access := audit.New(st)
+	go access.Run(30 * time.Second)
+
 	// 告警评估：每 30 秒
 	alertEval := alert.New(col, st)
 	go func() {
@@ -124,6 +129,7 @@ func main() {
 		Alert:   alertEval,
 		DbPath:  dbPath,
 		Disk:    guard,
+		Access:  access,
 		SetConfig: func(intervalMs, dbMs int64) error {
 			if intervalMs > 0 {
 				col.SetInterval(time.Duration(intervalMs) * time.Millisecond)
